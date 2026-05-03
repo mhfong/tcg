@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 
 export default function SettingsPage() {
-  const { user } = useAuth()
+  const { user, signOut } = useAuth()
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -128,6 +128,9 @@ export default function SettingsPage() {
           <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
             <strong style={{ color: 'var(--text-primary)' }}>Email:</strong> {user?.email}
           </div>
+          <button type="button" onClick={signOut} className="btn btn-ghost" style={{ marginTop: '0.75rem' }}>
+            Sign Out
+          </button>
         </div>
       </div>
     </div>

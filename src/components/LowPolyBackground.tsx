@@ -1,131 +1,200 @@
-import { useRef, useMemo } from 'react'
+import { useMemo, useRef } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { Float } from '@react-three/drei'
-import type { Mesh } from 'three'
+import type { Group } from 'three'
 
-/* ─── Palette from warm pastel diorama references ─── */
+type BallDecal = 'none' | 'straps' | 'double-band' | 'm-mark'
+
+type BallVariant = {
+  top: string
+  seam: string
+  ring: string
+  button: string
+  bottom?: string
+  opacity?: number
+  decal?: BallDecal
+}
+
+type BallConfig = {
+  position: [number, number, number]
+  scale: number
+  speed: number
+  variant: BallVariant
+}
+
 const PALETTE = {
-  coral: '#e08860',
-  peach: '#e8b4a0',
-  lavender: '#b8a4c8',
-  lilac: '#c8b4d8',
-  teal: '#7ec4c4',
-  mint: '#a8d8c8',
-  sand: '#d4c898',
-  rose: '#d4a0a0',
-  cream: '#ede0cc',
-  stone: '#b8a898',
+  cream: '#f5efe1',
+  coral: '#e49a6f',
+  coralDeep: '#d78257',
+  aqua: '#8bcfcd',
+  lilac: '#b89dce',
+  violet: '#b296cf',
+  mocha: '#4f3c37',
+  gold: '#d8b45d',
+  sand: '#d5bd8a',
 }
 
-function LowPolyGem({ position, color, scale = 1, speed = 0.15 }: {
-  position: [number, number, number]; color: string; scale?: number; speed?: number
-}) {
-  const ref = useRef<Mesh>(null!)
-  useFrame((_, delta) => {
-    ref.current.rotation.x += delta * speed
-    ref.current.rotation.y += delta * speed * 1.3
-  })
-  return (
-    <Float speed={1.2} rotationIntensity={0.3} floatIntensity={0.6}>
-      <mesh ref={ref} position={position} scale={scale}>
-        <icosahedronGeometry args={[1, 0]} />
-        <meshStandardMaterial color={color} flatShading transparent opacity={0.35} />
-      </mesh>
-    </Float>
-  )
+function BallDetails({ decal, color, opacity }: { decal: BallDecal; color: string; opacity: number }) {
+  if (decal === 'straps') {
+    return (
+      <>
+        <mesh position={[0.35, 0.56, 0.58]} rotation={[0.35, -0.6, -0.38]}>
+          <boxGeometry args={[0.68, 0.16, 0.12]} />
+          <meshStandardMaterial color={color} flatShading transparent opacity={opacity} />
+        </mesh>
+        <mesh position={[-0.34, 0.42, 0.68]} rotation={[-0.28, 0.5, 0.2]}>
+          <boxGeometry args={[0.62, 0.14, 0.12]} />
+          <meshStandardMaterial color={color} flatShading transparent opacity={opacity} />
+        </mesh>
+      </>
+    )
+  }
+
+  if (decal === 'double-band') {
+    return (
+      <>
+        <mesh position={[0, 0.58, 0]} rotation={[Math.PI / 2, 0, 0]}>
+          <torusGeometry args={[0.54, 0.045, 4, 12]} />
+          <meshStandardMaterial color={color} flatShading transparent opacity={opacity} />
+        </mesh>
+        <mesh position={[0, 0.36, 0]} rotation={[Math.PI / 2, 0, 0]}>
+          <torusGeometry args={[0.7, 0.045, 4, 12]} />
+          <meshStandardMaterial color={color} flatShading transparent opacity={opacity} />
+        </mesh>
+      </>
+    )
+  }
+
+  if (decal === 'm-mark') {
+    return (
+      <>
+        <mesh position={[-0.3, 0.58, 0.72]} rotation={[0.1, 0, 0.18]}>
+          <boxGeometry args={[0.1, 0.4, 0.08]} />
+          <meshStandardMaterial color={color} flatShading transparent opacity={opacity} />
+        </mesh>
+        <mesh position={[-0.06, 0.62, 0.72]} rotation={[0.1, 0, -0.35]}>
+          <boxGeometry args={[0.1, 0.3, 0.08]} />
+          <meshStandardMaterial color={color} flatShading transparent opacity={opacity} />
+        </mesh>
+        <mesh position={[0.16, 0.62, 0.72]} rotation={[0.1, 0, 0.35]}>
+          <boxGeometry args={[0.1, 0.3, 0.08]} />
+          <meshStandardMaterial color={color} flatShading transparent opacity={opacity} />
+        </mesh>
+        <mesh position={[0.38, 0.58, 0.72]} rotation={[0.1, 0, -0.18]}>
+          <boxGeometry args={[0.1, 0.4, 0.08]} />
+          <meshStandardMaterial color={color} flatShading transparent opacity={opacity} />
+        </mesh>
+      </>
+    )
+  }
+
+  return null
 }
 
-function LowPolyOcta({ position, color, scale = 1, speed = 0.1 }: {
-  position: [number, number, number]; color: string; scale?: number; speed?: number
-}) {
-  const ref = useRef<Mesh>(null!)
-  useFrame((_, delta) => {
-    ref.current.rotation.z += delta * speed
-    ref.current.rotation.x += delta * speed * 0.8
-  })
-  return (
-    <Float speed={1.8} rotationIntensity={0.4} floatIntensity={0.8}>
-      <mesh ref={ref} position={position} scale={scale}>
-        <octahedronGeometry args={[1, 0]} />
-        <meshStandardMaterial color={color} flatShading transparent opacity={0.3} />
-      </mesh>
-    </Float>
-  )
-}
+function LowPolyBall({ position, scale, speed, variant }: BallConfig) {
+  const ref = useRef<Group>(null!)
+  const opacity = variant.opacity ?? 0.38
 
-function LowPolyTetra({ position, color, scale = 1 }: {
-  position: [number, number, number]; color: string; scale?: number
-}) {
-  const ref = useRef<Mesh>(null!)
   useFrame((_, delta) => {
-    ref.current.rotation.y += delta * 0.08
+    ref.current.rotation.y += delta * speed
+    ref.current.rotation.x += delta * speed * 0.35
   })
-  return (
-    <Float speed={1} rotationIntensity={0.2} floatIntensity={0.5}>
-      <mesh ref={ref} position={position} scale={scale}>
-        <tetrahedronGeometry args={[1, 0]} />
-        <meshStandardMaterial color={color} flatShading transparent opacity={0.25} />
-      </mesh>
-    </Float>
-  )
-}
 
-function LowPolyDodec({ position, color, scale = 1 }: {
-  position: [number, number, number]; color: string; scale?: number
-}) {
-  const ref = useRef<Mesh>(null!)
-  useFrame((_, delta) => {
-    ref.current.rotation.x += delta * 0.06
-    ref.current.rotation.z += delta * 0.04
-  })
   return (
-    <Float speed={0.8} rotationIntensity={0.15} floatIntensity={0.4}>
-      <mesh ref={ref} position={position} scale={scale}>
-        <dodecahedronGeometry args={[1, 0]} />
-        <meshStandardMaterial color={color} flatShading transparent opacity={0.22} />
-      </mesh>
+    <Float speed={1.2 + speed * 2} rotationIntensity={0.12} floatIntensity={0.65}>
+      <group ref={ref} position={position} scale={scale}>
+        <mesh>
+          <sphereGeometry args={[1, 10, 8]} />
+          <meshStandardMaterial color={variant.bottom ?? PALETTE.cream} flatShading transparent opacity={opacity} />
+        </mesh>
+
+        <mesh>
+          <sphereGeometry args={[1.001, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2]} />
+          <meshStandardMaterial color={variant.top} flatShading transparent opacity={opacity} />
+        </mesh>
+
+        <mesh rotation={[Math.PI / 2, 0, 0]}>
+          <torusGeometry args={[1, 0.06, 4, 16]} />
+          <meshStandardMaterial color={variant.seam} flatShading transparent opacity={opacity} />
+        </mesh>
+
+        <mesh position={[0, 0, 1.01]}>
+          <cylinderGeometry args={[0.2, 0.2, 0.08, 8, 1]} />
+          <meshStandardMaterial color={variant.ring} flatShading transparent opacity={opacity} />
+        </mesh>
+
+        <mesh position={[0, 0, 1.07]}>
+          <cylinderGeometry args={[0.11, 0.11, 0.08, 8, 1]} />
+          <meshStandardMaterial color={variant.button} flatShading transparent opacity={opacity} />
+        </mesh>
+
+        <BallDetails decal={variant.decal ?? 'none'} color={variant.seam} opacity={opacity} />
+      </group>
     </Float>
   )
 }
 
 function Scene() {
-  const shapes = useMemo(() => [
-    // Scattered gems - warm tones
-    { Comp: LowPolyGem, pos: [-7, 3.5, -3] as [number,number,number], color: PALETTE.coral, scale: 0.7 },
-    { Comp: LowPolyGem, pos: [8, -2, -4] as [number,number,number], color: PALETTE.peach, scale: 1.0 },
-    { Comp: LowPolyGem, pos: [-5, -4, -5] as [number,number,number], color: PALETTE.lavender, scale: 0.5 },
-    { Comp: LowPolyGem, pos: [6, 4, -6] as [number,number,number], color: PALETTE.sand, scale: 0.4 },
-    { Comp: LowPolyGem, pos: [0, -5, -3] as [number,number,number], color: PALETTE.rose, scale: 0.6 },
-
-    // Octahedrons - cool accents
-    { Comp: LowPolyOcta, pos: [7, 2, -3] as [number,number,number], color: PALETTE.teal, scale: 0.6 },
-    { Comp: LowPolyOcta, pos: [-6, -1, -4] as [number,number,number], color: PALETTE.mint, scale: 0.8 },
-    { Comp: LowPolyOcta, pos: [3, 5, -7] as [number,number,number], color: PALETTE.lilac, scale: 0.35 },
-    { Comp: LowPolyOcta, pos: [-3, 4, -5] as [number,number,number], color: PALETTE.cream, scale: 0.5 },
-
-    // Tetrahedrons - scattered small
-    { Comp: LowPolyTetra, pos: [5, -4, -5] as [number,number,number], color: PALETTE.coral, scale: 0.45 },
-    { Comp: LowPolyTetra, pos: [-8, 1, -6] as [number,number,number], color: PALETTE.stone, scale: 0.55 },
-    { Comp: LowPolyTetra, pos: [2, 3, -4] as [number,number,number], color: PALETTE.sand, scale: 0.3 },
-
-    // Dodecahedrons - larger backdrop
-    { Comp: LowPolyDodec, pos: [-4, 5, -8] as [number,number,number], color: PALETTE.peach, scale: 0.7 },
-    { Comp: LowPolyDodec, pos: [9, 0, -7] as [number,number,number], color: PALETTE.lavender, scale: 0.6 },
+  const balls = useMemo<BallConfig[]>(() => [
+    {
+      position: [-7.1, 3.6, -4.2],
+      scale: 0.9,
+      speed: 0.1,
+      variant: { top: PALETTE.coral, seam: PALETTE.coralDeep, ring: PALETTE.coralDeep, button: PALETTE.cream }
+    },
+    {
+      position: [7.8, -1.7, -4.9],
+      scale: 0.95,
+      speed: 0.14,
+      variant: { top: PALETTE.aqua, seam: PALETTE.lilac, ring: PALETTE.lilac, button: PALETTE.cream, decal: 'straps' }
+    },
+    {
+      position: [-5.7, -4.2, -5.8],
+      scale: 0.82,
+      speed: 0.12,
+      variant: { top: PALETTE.violet, seam: PALETTE.lilac, ring: PALETTE.lilac, button: PALETTE.cream, decal: 'm-mark' }
+    },
+    {
+      position: [5.9, 4.4, -6.8],
+      scale: 0.72,
+      speed: 0.09,
+      variant: { top: PALETTE.gold, seam: PALETTE.sand, ring: PALETTE.sand, button: PALETTE.cream }
+    },
+    {
+      position: [0.6, 5.3, -7.5],
+      scale: 0.7,
+      speed: 0.08,
+      variant: { top: '#efe2cb', seam: PALETTE.sand, ring: PALETTE.sand, button: PALETTE.cream }
+    },
+    {
+      position: [-8.4, 0.9, -6.9],
+      scale: 0.68,
+      speed: 0.11,
+      variant: { top: PALETTE.mocha, seam: '#b07c5b', ring: '#b07c5b', button: '#edd6b5', decal: 'double-band' }
+    },
+    {
+      position: [4.9, -4.7, -6.3],
+      scale: 0.76,
+      speed: 0.1,
+      variant: { top: PALETTE.gold, seam: '#d8c187', ring: '#d8c187', button: PALETTE.cream }
+    },
+    {
+      position: [1.4, -5.3, -5.2],
+      scale: 0.64,
+      speed: 0.13,
+      variant: { top: '#ebdcc3', seam: PALETTE.sand, ring: PALETTE.sand, button: PALETTE.cream }
+    },
   ], [])
 
   return (
     <>
-      {/* Warm ambient light */}
       <ambientLight intensity={0.45} color="#ffeedd" />
-      {/* Main directional - warm sun */}
       <directionalLight position={[5, 6, 4]} intensity={1.0} color="#ffe8d0" />
-      {/* Fill - cool teal from below */}
       <directionalLight position={[-3, -4, 3]} intensity={0.3} color="#7ec4c4" />
-      {/* Rim - lavender accent */}
       <directionalLight position={[-5, 3, -2]} intensity={0.2} color="#b8a4c8" />
 
-      {shapes.map((s, i) => (
-        <s.Comp key={i} position={s.pos} color={s.color} scale={s.scale} />
+      {balls.map((ball, i) => (
+        <LowPolyBall key={i} {...ball} />
       ))}
     </>
   )

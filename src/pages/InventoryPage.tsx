@@ -111,7 +111,7 @@ export default function InventoryPage() {
   }
 
   if (loading) {
-    return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', color: 'var(--text-secondary)' }}>Loading inventory...</div>
+    return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', color: 'var(--text-secondary)', fontWeight: 600 }}>Loading inventory...</div>
   }
 
   return (
@@ -122,32 +122,36 @@ export default function InventoryPage() {
 
       {/* Summary Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
-        <div className="lp-card">
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Total Cards</div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{totals.totalCards}</div>
-        </div>
-        <div className="lp-card">
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Total Cost</div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>¥{totals.totalCost.toLocaleString()}</div>
-        </div>
-        <div className="lp-card">
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Current Value</div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>¥{totals.currentValue.toLocaleString()}</div>
-        </div>
-        <div className="lp-card">
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>P/L</div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{formatPct(overallChange)}</div>
-        </div>
+        {[
+          { label: 'Total Cards', value: String(totals.totalCards), gradient: 'linear-gradient(135deg, #e08860, #d47850)', shadow: 'rgba(224,136,96,0.25)', icon: '◇' },
+          { label: 'Total Cost', value: `¥${totals.totalCost.toLocaleString()}`, gradient: 'linear-gradient(135deg, #d4a05c, #c4904c)', shadow: 'rgba(212,160,92,0.25)', icon: '¥' },
+          { label: 'Current Value', value: `¥${totals.currentValue.toLocaleString()}`, gradient: 'linear-gradient(135deg, #7ec4c4, #68b4b4)', shadow: 'rgba(126,196,196,0.25)', icon: '◎' },
+          { label: 'P/L', value: null, gradient: 'linear-gradient(135deg, #b8a4c8, #a894b8)', shadow: 'rgba(184,164,200,0.25)', icon: '▲' },
+        ].map((s) => (
+          <div key={s.label} className="lp-card stat-card" style={{ padding: '1.25rem 1.5rem', overflow: 'visible' }}>
+            <div style={{
+              width: 40, height: 40, borderRadius: 12,
+              background: s.gradient,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              marginBottom: '0.75rem',
+              boxShadow: `0 4px 12px ${s.shadow}`,
+            }}>
+              <span style={{ color: '#fff', fontSize: '1rem' }}>{s.icon}</span>
+            </div>
+            <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>{s.label}</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 800 }}>{s.value !== null ? s.value : formatPct(overallChange)}</div>
+          </div>
+        ))}
       </div>
 
       {/* Inventory Table */}
       {inventory.length === 0 ? (
-        <div className="lp-card" style={{ textAlign: 'center', padding: '3rem' }}>
-          <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>▽</div>
-          <div style={{ color: 'var(--text-secondary)' }}>No inventory. Add buy transactions to build your collection.</div>
+        <div className="lp-card empty-state">
+          <div className="empty-state-icon">▽</div>
+          <div className="empty-state-text">No inventory. Add buy transactions to build your collection.</div>
         </div>
       ) : (
-        <div className="lp-card" style={{ padding: 0, overflow: 'auto' }}>
+        <div className="lp-card" style={{ padding: 0, overflow: 'auto', borderRadius: 14 }}>
           <table className="data-table">
             <thead>
               <tr>
@@ -165,7 +169,7 @@ export default function InventoryPage() {
             <tbody>
               {inventory.map(item => (
                 <tr key={`${item.card_id}__${item.condition}`}>
-                  <td><span style={{ fontSize: '0.7rem', padding: '0.15rem 0.4rem', borderRadius: 3, background: item.card?.tcg_type === 'PTCG' ? 'rgba(255,167,38,0.2)' : 'rgba(79,195,247,0.2)', color: item.card?.tcg_type === 'PTCG' ? 'var(--warning)' : 'var(--accent)' }}>{item.card?.tcg_type}</span></td>
+                  <td><span className={`tag ${item.card?.tcg_type === 'PTCG' ? 'tag-ptcg' : 'tag-opcg'}`}>{item.card?.tcg_type}</span></td>
                   <td>
                     <div style={{ fontWeight: 500 }}>{item.card?.name_jp}</div>
                     <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{item.card?.series} {item.card?.card_number} · {item.card?.rarity}</div>

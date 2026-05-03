@@ -83,7 +83,7 @@ export default function TransactionPage() {
   }
 
   if (loading) {
-    return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', color: 'var(--text-secondary)' }}>Loading transactions...</div>
+    return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', color: 'var(--text-secondary)', fontWeight: 600 }}>Loading transactions...</div>
   }
 
   return (
@@ -154,12 +154,12 @@ export default function TransactionPage() {
 
       {/* Table */}
       {transactions.length === 0 ? (
-        <div className="lp-card" style={{ textAlign: 'center', padding: '3rem' }}>
-          <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>△</div>
-          <div style={{ color: 'var(--text-secondary)' }}>No transactions yet. Record your first buy or sell.</div>
+        <div className="lp-card empty-state">
+          <div className="empty-state-icon">△</div>
+          <div className="empty-state-text">No transactions yet. Record your first buy or sell.</div>
         </div>
       ) : (
-        <div className="lp-card" style={{ padding: 0, overflow: 'auto' }}>
+        <div className="lp-card" style={{ padding: 0, overflow: 'auto', borderRadius: 14 }}>
           <table className="data-table">
             <thead>
               <tr>
@@ -179,11 +179,7 @@ export default function TransactionPage() {
                 <tr key={t.id}>
                   <td style={{ whiteSpace: 'nowrap' }}>{t.date}</td>
                   <td>
-                    <span style={{
-                      fontSize: '0.7rem', padding: '0.15rem 0.4rem', borderRadius: 3,
-                      background: t.type === 'buy' ? 'rgba(102,187,106,0.2)' : 'rgba(239,83,80,0.2)',
-                      color: t.type === 'buy' ? 'var(--success)' : 'var(--danger)'
-                    }}>
+                    <span className={`tag ${t.type === 'buy' ? 'tag-buy' : 'tag-sell'}`}>
                       {t.type.toUpperCase()}
                     </span>
                   </td>
@@ -194,7 +190,7 @@ export default function TransactionPage() {
                   <td>{t.condition === 'RAW_A' ? 'RAW (A)' : t.condition}</td>
                   <td style={{ textAlign: 'right' }}>¥{t.price.toLocaleString()}</td>
                   <td style={{ textAlign: 'right' }}>{t.quantity}</td>
-                  <td style={{ textAlign: 'right', fontWeight: 600 }}>¥{(t.price * t.quantity).toLocaleString()}</td>
+                  <td style={{ textAlign: 'right', fontWeight: 700 }}>¥{(t.price * t.quantity).toLocaleString()}</td>
                   <td style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.notes}</td>
                   <td>
                     <div style={{ display: 'flex', gap: '0.25rem' }}>

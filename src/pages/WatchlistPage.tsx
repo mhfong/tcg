@@ -116,7 +116,7 @@ export default function WatchlistPage() {
   }
 
   if (loading) {
-    return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', color: 'var(--text-secondary)' }}>Loading watchlist...</div>
+    return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', color: 'var(--text-secondary)', fontWeight: 600 }}>Loading watchlist...</div>
   }
 
   return (
@@ -158,7 +158,7 @@ export default function WatchlistPage() {
                 <tbody>
                   {filteredCards.slice(0, 50).map(card => (
                     <tr key={card.id}>
-                      <td><span style={{ fontSize: '0.7rem', padding: '0.15rem 0.4rem', borderRadius: 3, background: card.tcg_type === 'PTCG' ? 'rgba(255,167,38,0.2)' : 'rgba(79,195,247,0.2)', color: card.tcg_type === 'PTCG' ? 'var(--warning)' : 'var(--accent)' }}>{card.tcg_type}</span></td>
+                      <td><span className={`tag ${card.tcg_type === 'PTCG' ? 'tag-ptcg' : 'tag-opcg'}`}>{card.tcg_type}</span></td>
                       <td>{card.series}</td>
                       <td>{card.card_number}</td>
                       <td>{card.name_jp}</td>
@@ -175,12 +175,12 @@ export default function WatchlistPage() {
 
       {/* Watchlist Table */}
       {watchlist.length === 0 ? (
-        <div className="lp-card" style={{ textAlign: 'center', padding: '3rem' }}>
-          <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>◇</div>
-          <div style={{ color: 'var(--text-secondary)' }}>Your watchlist is empty. Add cards to track their prices.</div>
+        <div className="lp-card empty-state">
+          <div className="empty-state-icon">◇</div>
+          <div className="empty-state-text">Your watchlist is empty. Add cards to track their prices.</div>
         </div>
       ) : (
-        <div className="lp-card" style={{ padding: 0, overflow: 'auto' }}>
+        <div className="lp-card" style={{ padding: 0, overflow: 'auto', borderRadius: 14 }}>
           <table className="data-table">
             <thead>
               <tr>
@@ -200,14 +200,14 @@ export default function WatchlistPage() {
                 const pd = priceData[w.card_id]
                 return (
                   <tr key={w.id}>
-                    <td><span style={{ fontSize: '0.7rem', padding: '0.15rem 0.4rem', borderRadius: 3, background: w.card.tcg_type === 'PTCG' ? 'rgba(255,167,38,0.2)' : 'rgba(79,195,247,0.2)', color: w.card.tcg_type === 'PTCG' ? 'var(--warning)' : 'var(--accent)' }}>{w.card.tcg_type}</span></td>
+                    <td><span className={`tag ${w.card.tcg_type === 'PTCG' ? 'tag-ptcg' : 'tag-opcg'}`}>{w.card.tcg_type}</span></td>
                     <td>{w.card.series}</td>
                     <td>
                       <div style={{ fontWeight: 500 }}>{w.card.name_jp}</div>
                       <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{w.card.card_number}</div>
                     </td>
                     <td>{w.card.rarity}</td>
-                    <td style={{ textAlign: 'right', fontWeight: 600 }}>{pd?.latest_price ? `¥${pd.latest_price.toLocaleString()}` : '—'}</td>
+                    <td style={{ textAlign: 'right', fontWeight: 700 }}>{pd?.latest_price ? `¥${pd.latest_price.toLocaleString()}` : '—'}</td>
                     <td style={{ textAlign: 'right' }}>{formatPct(pd?.change_7d ?? null)}</td>
                     <td style={{ textAlign: 'right' }}>{formatPct(pd?.change_30d ?? null)}</td>
                     <td style={{ textAlign: 'right' }}>{pd?.buyers_30d ?? '—'}</td>

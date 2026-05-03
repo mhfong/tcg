@@ -10,7 +10,14 @@ interface ChartData {
   data: { date: string; price: number }[]
 }
 
-const CHART_COLORS = ['#4fc3f7', '#66bb6a', '#ffa726', '#ef5350', '#ab47bc', '#26c6da', '#ffee58', '#ec407a']
+const CHART_COLORS = ['#e08860', '#7cb88c', '#d4a05c', '#d47878', '#b8a4c8', '#7ec4c4', '#d4c898', '#d4a0a0']
+
+const STAT_GRADIENTS = [
+  'linear-gradient(135deg, #e08860, #d47850)',
+  'linear-gradient(135deg, #7ec4c4, #68b4b4)',
+  'linear-gradient(135deg, #b8a4c8, #a894b8)',
+]
+const STAT_ICONS = ['◈', '¥', '⟳']
 
 export default function DashboardPage() {
   const { user } = useAuth()
@@ -82,10 +89,13 @@ export default function DashboardPage() {
   if (loading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
-        <div style={{ color: 'var(--text-secondary)' }}>Loading dashboard...</div>
+        <div style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>Loading dashboard...</div>
       </div>
     )
   }
+
+  const statLabels = ['Watched Cards', 'Total Tracked Value', 'Last Scrape']
+  const statValues = [String(stats.totalCards), `¥${stats.totalValue.toLocaleString()}`, '—']
 
   return (
     <div>
@@ -93,27 +103,35 @@ export default function DashboardPage() {
         <h1 className="page-title">Dashboard</h1>
       </div>
 
-      {/* Stats Row */}
+      {/* Isometric Stat Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
-        <div className="lp-card">
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Watched Cards</div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{stats.totalCards}</div>
-        </div>
-        <div className="lp-card">
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Total Tracked Value</div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>¥{stats.totalValue.toLocaleString()}</div>
-        </div>
-        <div className="lp-card">
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Last Scrape</div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>—</div>
-        </div>
+        {statLabels.map((label, i) => (
+          <div key={label} className="lp-card stat-card" style={{
+            padding: '1.25rem 1.5rem',
+            borderTop: 'none',
+            overflow: 'visible',
+          }}>
+            {/* Colored icon badge */}
+            <div style={{
+              width: 40, height: 40, borderRadius: 12,
+              background: STAT_GRADIENTS[i],
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              marginBottom: '0.75rem',
+              boxShadow: `0 4px 12px ${['rgba(224,136,96,0.25)', 'rgba(126,196,196,0.25)', 'rgba(184,164,200,0.25)'][i]}`,
+            }}>
+              <span style={{ color: '#fff', fontSize: '1rem' }}>{STAT_ICONS[i]}</span>
+            </div>
+            <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>{label}</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)' }}>{statValues[i]}</div>
+          </div>
+        ))}
       </div>
 
       {/* Charts */}
       {charts.length === 0 ? (
-        <div className="lp-card" style={{ textAlign: 'center', padding: '3rem' }}>
-          <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>◇</div>
-          <div style={{ color: 'var(--text-secondary)' }}>
+        <div className="lp-card empty-state">
+          <div className="empty-state-icon">◇</div>
+          <div className="empty-state-text">
             No price data yet. Add cards to your watchlist and wait for the scraper to run.
           </div>
         </div>
@@ -121,18 +139,22 @@ export default function DashboardPage() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '1rem' }}>
           {charts.map((chart, i) => (
             <div key={chart.card_id} className="lp-card">
-              <div style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '1rem' }}>{chart.card_name}</div>
+              <div style={{ fontSize: '0.875rem', fontWeight: 700, marginBottom: '1rem', color: 'var(--text-primary)' }}>{chart.card_name}</div>
               <ResponsiveContainer width="100%" height={200}>
                 <LineChart data={chart.data}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                   <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'var(--text-secondary)' }} />
                   <YAxis tick={{ fontSize: 11, fill: 'var(--text-secondary)' }} />
                   <Tooltip
-                    contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 4 }}
-                    labelStyle={{ color: 'var(--text-primary)' }}
-                    formatter={(value) => [`¥${Number(value).toLocaleString()}`, 'Price']}
+                    contentStyle={{
+                      background: 'var(--bg-card)', border: '1px solid var(--border)',
+                      borderRadius: 10, boxShadow: 'var(--shadow-md)',
+                      fontFamily: 'Nunito'
+                    }}
+                    labelStyle={{ color: 'var(--text-primary)', fontWeight: 700 }}
+                    formatter={(value: any) => [`¥${Number(value).toLocaleString()}`, 'Price']}
                   />
-                  <Line type="monotone" dataKey="price" stroke={CHART_COLORS[i % CHART_COLORS.length]} strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="price" stroke={CHART_COLORS[i % CHART_COLORS.length]} strokeWidth={2.5} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>

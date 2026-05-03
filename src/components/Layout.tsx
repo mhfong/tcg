@@ -9,7 +9,8 @@ export default function Layout() {
       <Sidebar />
       <main style={{
         flex: 1, padding: '2rem', overflowY: 'auto',
-        position: 'relative', zIndex: 10
+        position: 'relative', zIndex: 10,
+        background: 'rgba(245,237,227,0.6)',
       }}>
         <Outlet />
       </main>

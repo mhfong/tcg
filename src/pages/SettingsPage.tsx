@@ -62,7 +62,7 @@ export default function SettingsPage() {
 
       <div style={{ maxWidth: 480 }}>
         <div className="lp-card">
-          <h2 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '1rem' }}>Change Password</h2>
+          <h2 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '1rem', color: 'var(--text-primary)' }}>Change Password</h2>
 
           <form onSubmit={handleChangePassword} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             <div>
@@ -107,12 +107,12 @@ export default function SettingsPage() {
             </div>
 
             {error && (
-              <div style={{ color: 'var(--danger)', fontSize: '0.8rem', padding: '0.5rem', background: 'rgba(239,83,80,0.1)', borderRadius: '4px' }}>
+              <div style={{ color: 'var(--danger)', fontSize: '0.8rem', padding: '0.625rem 0.75rem', background: 'rgba(212,120,120,0.1)', borderRadius: 10, fontWeight: 600 }}>
                 {error}
               </div>
             )}
             {message && (
-              <div style={{ color: 'var(--success)', fontSize: '0.8rem', padding: '0.5rem', background: 'rgba(102,187,106,0.1)', borderRadius: '4px' }}>
+              <div style={{ color: 'var(--success)', fontSize: '0.8rem', padding: '0.625rem 0.75rem', background: 'rgba(124,184,140,0.1)', borderRadius: 10, fontWeight: 600 }}>
                 {message}
               </div>
             )}
@@ -124,7 +124,7 @@ export default function SettingsPage() {
         </div>
 
         <div className="lp-card" style={{ marginTop: '1rem' }}>
-          <h2 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.5rem' }}>Account</h2>
+          <h2 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '0.5rem', color: 'var(--text-primary)' }}>Account</h2>
           <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
             <strong style={{ color: 'var(--text-primary)' }}>Email:</strong> {user?.email}
           </div>

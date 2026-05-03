@@ -41,18 +41,32 @@ export default function LoginPage() {
         alignItems: 'center',
         justifyContent: 'center',
         padding: '1.5rem',
-        zIndex: 10
+        zIndex: 10,
+        background: 'rgba(245,237,227,0.4)',
       }}>
-        <div className="lp-card" style={{ width: 380, padding: '2rem' }}>
-          <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-            <span style={{ fontSize: '2.5rem', color: 'var(--accent)' }}>◆</span>
-            <h1 style={{ fontSize: '1.25rem', fontWeight: 700, marginTop: '0.5rem' }}>TCG Market Intelligence</h1>
-            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+        <div className="lp-card" style={{
+          width: 400, padding: '2.5rem',
+          borderRadius: 18,
+          background: 'rgba(255,248,242,0.92)',
+          backdropFilter: 'blur(20px)',
+          boxShadow: '0 12px 40px rgba(74,63,56,0.12), 0 4px 12px rgba(74,63,56,0.06)',
+        }}>
+          <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+            <div style={{
+              width: 56, height: 56, borderRadius: 14, margin: '0 auto 0.75rem',
+              background: 'linear-gradient(135deg, var(--accent), var(--lavender))',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              boxShadow: '0 4px 16px rgba(224,136,96,0.3)',
+            }}>
+              <span style={{ fontSize: '1.5rem', color: '#fff' }}>◆</span>
+            </div>
+            <h1 style={{ fontSize: '1.375rem', fontWeight: 800, color: 'var(--text-primary)' }}>TCG Market Intelligence</h1>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem', fontWeight: 600 }}>
               Japanese PTCG & OPCG Tracker
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
             <input
               type="email"
               className="input"
@@ -72,25 +86,38 @@ export default function LoginPage() {
             />
 
             {error && (
-              <div style={{ color: 'var(--danger)', fontSize: '0.8rem', padding: '0.5rem', background: 'rgba(239,83,80,0.1)', borderRadius: '4px' }}>
+              <div style={{
+                color: 'var(--danger)', fontSize: '0.8rem', padding: '0.625rem 0.75rem',
+                background: 'rgba(212,120,120,0.1)', borderRadius: 10, fontWeight: 600
+              }}>
                 {error}
               </div>
             )}
             {message && (
-              <div style={{ color: 'var(--success)', fontSize: '0.8rem', padding: '0.5rem', background: 'rgba(102,187,106,0.1)', borderRadius: '4px' }}>
+              <div style={{
+                color: 'var(--success)', fontSize: '0.8rem', padding: '0.625rem 0.75rem',
+                background: 'rgba(124,184,140,0.1)', borderRadius: 10, fontWeight: 600
+              }}>
                 {message}
               </div>
             )}
 
-            <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '0.625rem' }} disabled={loading}>
+            <button type="submit" className="btn btn-primary" style={{
+              width: '100%', justifyContent: 'center', padding: '0.75rem',
+              fontSize: '0.9rem', borderRadius: 12
+            }} disabled={loading}>
               {loading ? '...' : isSignUp ? 'Create Account' : 'Sign In'}
             </button>
           </form>
 
-          <div style={{ textAlign: 'center', marginTop: '1rem' }}>
+          <div style={{ textAlign: 'center', marginTop: '1.25rem' }}>
             <button
               onClick={() => { setIsSignUp(!isSignUp); setError(''); setMessage('') }}
-              style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: '0.8rem' }}
+              style={{
+                background: 'none', border: 'none', color: 'var(--accent)',
+                cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700,
+                fontFamily: 'inherit'
+              }}
             >
               {isSignUp ? 'Already have an account? Sign in' : "Don't have an account? Sign up"}
             </button>

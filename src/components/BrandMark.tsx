@@ -20,22 +20,14 @@ export default function BrandMark({ size = 56, iconSize = 26, style }: BrandMark
       ...style,
     }}>
       <svg viewBox="0 0 24 24" width={iconSize} height={iconSize} aria-hidden="true">
-        <defs>
-          <clipPath id="brand-ball-clip">
-            <circle cx="12.2" cy="12" r="4.95" />
-          </clipPath>
-        </defs>
-        <rect x="5.1" y="4.8" width="11" height="13.6" rx="2.4" transform="rotate(-10 10.6 11.6)" fill="rgba(255,255,255,0.28)" />
-        <rect x="7" y="4" width="11" height="13.6" rx="2.4" transform="rotate(10 12.5 10.8)" fill="#fff8f2" fillOpacity={0.92} />
-        <g clipPath="url(#brand-ball-clip)">
-          <rect x="7.25" y="7.05" width="9.9" height="4.95" fill="#e08860" />
-          <rect x="7.25" y="12" width="9.9" height="4.95" fill="#fff8f2" />
-        </g>
-        <circle cx="12.2" cy="12" r="4.95" fill="none" stroke="#4a3f38" strokeWidth="0.95" />
-        <rect x="7.05" y="11.55" width="10.3" height="0.9" rx="0.45" fill="#4a3f38" />
-        <circle cx="12.2" cy="12" r="1.55" fill="#fff8f2" stroke="#4a3f38" strokeWidth="0.9" />
-        <circle cx="12.2" cy="12" r="0.72" fill="#e08860" />
-        <path d="M16.65 5.9l.55 1.2 1.2.55-1.2.55-.55 1.2-.55-1.2-1.2-.55 1.2-.55z" fill="#fff8f2" />
+        <rect x="4.35" y="5.1" width="10.7" height="13.1" rx="2.35" transform="rotate(-10 9.7 11.65)" fill="none" stroke="#4a3f38" strokeWidth="0.7" opacity="0.28" />
+        <rect x="7.1" y="4.2" width="11.1" height="13.8" rx="2.5" transform="rotate(10 12.65 11.1)" fill="none" stroke="#4a3f38" strokeWidth="0.95" />
+
+        <circle cx="12.35" cy="12.2" r="5.45" fill="none" stroke="#4a3f38" strokeWidth="0.9" />
+        <path d="M6.9 12.2a5.45 5.45 0 0 0 10.9 0v5.15H6.9z" fill="#fff8f2" stroke="#4a3f38" strokeWidth="0.8" strokeLinejoin="round" />
+        <rect x="7.05" y="11.82" width="10.6" height="0.75" rx="0.375" fill="#4a3f38" />
+        <circle cx="12.35" cy="12.2" r="1.7" fill="#fff8f2" stroke="#4a3f38" strokeWidth="0.8" />
+        <circle cx="12.35" cy="12.2" r="0.72" fill="#4a3f38" />
       </svg>
     </div>
   )

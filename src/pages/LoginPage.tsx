@@ -17,14 +17,14 @@ export default function LoginPage() {
     setMessage('')
     setLoading(true)
 
-    const { error } = isSignUp
+    const { error, session } = isSignUp
       ? await signUp(email, password)
       : await signIn(email, password)
 
     if (error) {
       setError(error.message)
     } else if (isSignUp) {
-      setMessage('Check your email to confirm your account.')
+      setMessage(session ? 'Account created.' : 'Account created. Please sign in.')
     }
     setLoading(false)
   }

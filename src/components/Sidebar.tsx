@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
+import BrandMark from './BrandMark'
 
 const navItems = [
   { to: '/', label: 'Dashboard', icon: '⬡' },
@@ -25,14 +26,7 @@ export default function Sidebar() {
       {/* Logo */}
       <div style={{ padding: '1.5rem 1.25rem', borderBottom: '1px solid var(--border)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
-          <div style={{
-            width: 36, height: 36, borderRadius: 10,
-            background: 'linear-gradient(135deg, var(--accent), var(--lavender))',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 2px 8px rgba(224,136,96,0.3)',
-          }}>
-            <span style={{ fontSize: '1.1rem', color: '#fff' }}>◆</span>
-          </div>
+          <BrandMark size={36} iconSize={18} />
           <div>
             <div style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--text-primary)' }}>TCG Intel</div>
             <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', fontWeight: 600, letterSpacing: '0.05em' }}>PTCG / OPCG</div>

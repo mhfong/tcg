@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useAuth } from '../lib/auth'
 import LowPolyBackground from '../components/LowPolyBackground'
+import BrandMark from '../components/BrandMark'
 
 export default function LoginPage() {
   const { signIn, signUp } = useAuth()
@@ -52,14 +53,7 @@ export default function LoginPage() {
           boxShadow: '0 12px 40px rgba(74,63,56,0.12), 0 4px 12px rgba(74,63,56,0.06)',
         }}>
           <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-            <div style={{
-              width: 56, height: 56, borderRadius: 14, margin: '0 auto 0.75rem',
-              background: 'linear-gradient(135deg, var(--accent), var(--lavender))',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              boxShadow: '0 4px 16px rgba(224,136,96,0.3)',
-            }}>
-              <span style={{ fontSize: '1.5rem', color: '#fff' }}>◆</span>
-            </div>
+            <BrandMark size={56} iconSize={28} style={{ margin: '0 auto 0.75rem' }} />
             <h1 style={{ fontSize: '1.375rem', fontWeight: 800, color: 'var(--text-primary)' }}>TCG Market Intelligence</h1>
             <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem', fontWeight: 600 }}>
               Japanese PTCG & OPCG Tracker

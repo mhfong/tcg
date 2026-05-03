@@ -33,8 +33,15 @@ export default function LoginPage() {
     <>
       <LowPolyBackground />
       <div style={{
-        minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        position: 'relative', zIndex: 10
+        position: 'fixed',
+        inset: 0,
+        width: '100vw',
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '1.5rem',
+        zIndex: 10
       }}>
         <div className="lp-card" style={{ width: 380, padding: '2rem' }}>
           <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>

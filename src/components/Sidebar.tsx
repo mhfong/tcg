@@ -26,7 +26,7 @@ export default function Sidebar() {
       {/* Logo */}
       <div style={{ padding: '1.5rem 1.25rem', borderBottom: '1px solid var(--border)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
-          <BrandMark size={40} iconSize={24} />
+          <BrandMark size={36} iconSize={18} />
           <div>
             <div style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--text-primary)' }}>TCG Intel</div>
             <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', fontWeight: 600, letterSpacing: '0.05em' }}>PTCG / OPCG</div>

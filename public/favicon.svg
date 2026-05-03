@@ -4,16 +4,9 @@
 			<stop offset="0%" stop-color="#e08860" />
 			<stop offset="100%" stop-color="#b8a4c8" />
 		</linearGradient>
-		<clipPath id="ball-clip">
-			<circle cx="24.2" cy="24" r="10.2" />
-		</clipPath>
 	</defs>
 	<rect x="4" y="4" width="40" height="40" rx="10" fill="url(#bg)" />
-	<rect x="12.4" y="11.2" width="15.8" height="19.2" rx="3" transform="rotate(-10 20.3 20.8)" fill="none" stroke="#4a3f38" stroke-opacity="0.28" stroke-width="1.1" />
-	<rect x="15.1" y="10.2" width="15.8" height="19.2" rx="3" transform="rotate(10 23 19.8)" fill="none" stroke="#4a3f38" stroke-width="1.5" />
-	<circle cx="24.2" cy="24" r="9.8" fill="none" stroke="#4a3f38" stroke-width="1.5" />
-	<path d="M14.4 24a9.8 9.8 0 0 0 19.6 0v9.1H14.4z" fill="#fff8f2" stroke="#4a3f38" stroke-width="1.2" stroke-linejoin="round" />
-	<rect x="14.5" y="23.05" width="19.4" height="2.05" rx="1.025" fill="#4a3f38" />
-	<circle cx="24.2" cy="24" r="3.05" fill="#fff8f2" stroke="#4a3f38" stroke-width="1.1" />
-	<circle cx="24.2" cy="24" r="1.2" fill="#4a3f38" />
+	<rect x="15.1" y="12.3" width="12.3" height="17" rx="3" transform="rotate(-12 21.25 20.8)" fill="rgba(255,255,255,0.35)" />
+	<rect x="17" y="13.5" width="12.3" height="17" rx="3" transform="rotate(12 23.15 22)" fill="#fff" />
+	<path d="M31.8 12.2l.8 1.8 1.8.8-1.8.8-.8 1.8-.8-1.8-1.8-.8 1.8-.8z" fill="#fff8f2" />
 </svg>

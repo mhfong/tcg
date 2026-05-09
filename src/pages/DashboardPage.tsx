@@ -104,25 +104,26 @@ export default function DashboardPage() {
       </div>
 
       {/* Isometric Stat Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.25rem', marginBottom: '1.75rem' }}>
         {statLabels.map((label, i) => (
           <div key={label} className="lp-card stat-card" style={{
-            padding: '1.25rem 1.5rem',
+            padding: '1.75rem 1.75rem',
             borderTop: 'none',
             overflow: 'visible',
+            minHeight: 168,
           }}>
             {/* Colored icon badge */}
             <div style={{
-              width: 40, height: 40, borderRadius: 12,
+              width: 52, height: 52, borderRadius: 16,
               background: STAT_GRADIENTS[i],
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              marginBottom: '0.75rem',
+              marginBottom: '1rem',
               boxShadow: `0 4px 12px ${['rgba(224,136,96,0.25)', 'rgba(126,196,196,0.25)', 'rgba(184,164,200,0.25)'][i]}`,
             }}>
-              <span style={{ color: '#fff', fontSize: '1rem' }}>{STAT_ICONS[i]}</span>
+              <span style={{ color: '#fff', fontSize: '1.15rem' }}>{STAT_ICONS[i]}</span>
             </div>
-            <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>{label}</div>
-            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)' }}>{statValues[i]}</div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.35rem' }}>{label}</div>
+            <div style={{ fontSize: '1.85rem', fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1.05 }}>{statValues[i]}</div>
           </div>
         ))}
       </div>
@@ -136,11 +137,11 @@ export default function DashboardPage() {
           </div>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '1rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(520px, 1fr))', gap: '1.25rem' }}>
           {charts.map((chart, i) => (
             <div key={chart.card_id} className="lp-card">
-              <div style={{ fontSize: '0.875rem', fontWeight: 700, marginBottom: '1rem', color: 'var(--text-primary)' }}>{chart.card_name}</div>
-              <ResponsiveContainer width="100%" height={200}>
+              <div style={{ fontSize: '0.95rem', fontWeight: 800, marginBottom: '1rem', color: 'var(--text-primary)' }}>{chart.card_name}</div>
+              <ResponsiveContainer width="100%" height={240}>
                 <LineChart data={chart.data}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                   <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'var(--text-secondary)' }} />

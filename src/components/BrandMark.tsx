@@ -20,9 +20,9 @@ export default function BrandMark({ size = 56, iconSize = 26, style }: BrandMark
       ...style,
     }}>
       <svg viewBox="0 0 24 24" width={iconSize} height={iconSize} aria-hidden="true">
-        <rect x="6.9" y="5.1" width="9.8" height="12.8" rx="2.2" transform="rotate(-12 11.8 11.5)" fill="rgba(255,255,255,0.35)" />
-        <rect x="8.2" y="6" width="9.8" height="12.8" rx="2.2" transform="rotate(12 13.1 12.4)" fill="#fff" />
-        <path d="M17.2 6.5l.7 1.6 1.6.7-1.6.7-.7 1.6-.7-1.6-1.6-.7 1.6-.7z" fill="#fff8f2" />
+        <rect x="6.2" y="4.5" width="11.1" height="14.2" rx="2.4" transform="rotate(-12 11.75 11.6)" fill="rgba(255,255,255,0.35)" />
+        <rect x="7.2" y="5.1" width="11.1" height="14.2" rx="2.4" transform="rotate(12 12.75 12.2)" fill="#fff" />
+        <path d="M17.5 5.9l.8 1.8 1.8.8-1.8.8-.8 1.8-.8-1.8-1.8-.8 1.8-.8z" fill="#fff8f2" />
       </svg>
     </div>
   )

@@ -363,12 +363,12 @@ select.input { appearance: none; cursor: pointer; }
 .mobile-nav-link--dashboard {
   padding-top: 0;
   padding-bottom: 0;
-  transform: translateY(-1.55rem);
+  transform: translateY(-1.35rem);
 }
 
 .mobile-nav-link__button {
-  width: 4.35rem;
-  height: 4.35rem;
+  width: 3.9rem;
+  height: 3.9rem;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -381,13 +381,13 @@ select.input { appearance: none; cursor: pointer; }
 }
 
 .mobile-nav-link__button svg {
-  width: 1.6rem;
-  height: 1.6rem;
+  width: 1.45rem;
+  height: 1.45rem;
 }
 
 .mobile-nav-link--dashboard.is-active .mobile-nav-link__button {
-  box-shadow: 0 16px 32px rgba(224,136,96,0.34);
-  transform: scale(1.04);
+  box-shadow: 0 14px 28px rgba(224,136,96,0.32);
+  transform: scale(1.03);
 }
 
 .mobile-nav-link--dashboard:hover .mobile-nav-link__button {

@@ -65,16 +65,16 @@ function InventoryIcon(props: SVGProps<SVGSVGElement>) {
   )
 }
 
-function MainPageIcon(props: SVGProps<SVGSVGElement>) {
+function WebIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" {...props}>
-      <rect x="4.2" y="5.4" width="15.6" height="13.2" rx="2.8" />
-      <path d="M4.2 9h15.6" />
-      <circle cx="7.1" cy="7.2" r="0.7" fill="currentColor" stroke="none" />
-      <circle cx="9.1" cy="7.2" r="0.7" fill="currentColor" stroke="none" />
-      <circle cx="11.1" cy="7.2" r="0.7" fill="currentColor" stroke="none" />
-      <path d="M8.4 15.2h3.2l1.6-2 1.6 1.2 2.1-3.1" />
-      <path d="M15.5 11.3h0.01" />
+      <rect x="4.25" y="5.5" width="15.5" height="13" rx="2.6" />
+      <path d="M4.25 9h15.5" />
+      <circle cx="7.2" cy="7.2" r="0.75" fill="currentColor" stroke="none" />
+      <circle cx="9.2" cy="7.2" r="0.75" fill="currentColor" stroke="none" />
+      <circle cx="11.2" cy="7.2" r="0.75" fill="currentColor" stroke="none" />
+      <path d="M8.5 13.2h7" />
+      <path d="M8.5 15.5h4.6" />
     </svg>
   )
 }
@@ -90,7 +90,7 @@ const desktopNavItems: NavItem[] = [
 const mobileNavItems: NavItem[] = [
   { to: '/settings', label: 'Settings', Icon: SettingsIcon },
   { to: '/transactions', label: 'Transactions', Icon: TransactionsIcon },
-  { to: '/', label: 'Dashboard', Icon: MainPageIcon, end: true, center: true },
+  { to: '/', label: 'Dashboard', Icon: WebIcon, end: true, center: true },
   { to: '/watchlist', label: 'Watchlist', Icon: WatchlistIcon },
   { to: '/inventory', label: 'Inventory', Icon: InventoryIcon },
 ]

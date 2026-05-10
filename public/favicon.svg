@@ -6,25 +6,26 @@
 		</linearGradient>
 	</defs>
 	<rect x="4" y="4" width="40" height="40" rx="10" fill="url(#bg)" />
-	<!-- Crossbones back layer -->
 	<!-- Bone 1: top-left to bottom-right -->
-	<line x1="10" y1="10" x2="38" y2="38" stroke="rgba(255,255,255,0.3)" stroke-width="3" stroke-linecap="round" />
-	<circle cx="8.8" cy="11.2" r="2.2" fill="rgba(255,255,255,0.3)" />
-	<circle cx="11.2" cy="8.8" r="2.2" fill="rgba(255,255,255,0.3)" />
-	<circle cx="36.8" cy="39.2" r="2.2" fill="rgba(255,255,255,0.3)" />
-	<circle cx="39.2" cy="36.8" r="2.2" fill="rgba(255,255,255,0.3)" />
+	<line x1="5" y1="5" x2="43" y2="43" stroke="#fff" stroke-width="5.2" stroke-linecap="round" />
+	<circle cx="3.4" cy="6.6" r="3.3" fill="#fff" />
+	<circle cx="6.6" cy="3.4" r="3.3" fill="#fff" />
+	<circle cx="41.4" cy="44.6" r="3.3" fill="#fff" />
+	<circle cx="44.6" cy="41.4" r="3.3" fill="#fff" />
 	<!-- Bone 2: top-right to bottom-left -->
-	<line x1="38" y1="10" x2="10" y2="38" stroke="rgba(255,255,255,0.3)" stroke-width="3" stroke-linecap="round" />
-	<circle cx="39.2" cy="11.2" r="2.2" fill="rgba(255,255,255,0.3)" />
-	<circle cx="36.8" cy="8.8" r="2.2" fill="rgba(255,255,255,0.3)" />
-	<circle cx="11.2" cy="39.2" r="2.2" fill="rgba(255,255,255,0.3)" />
-	<circle cx="8.8" cy="36.8" r="2.2" fill="rgba(255,255,255,0.3)" />
+	<line x1="43" y1="5" x2="5" y2="43" stroke="#fff" stroke-width="5.2" stroke-linecap="round" />
+	<circle cx="44.6" cy="6.6" r="3.3" fill="#fff" />
+	<circle cx="41.4" cy="3.4" r="3.3" fill="#fff" />
+	<circle cx="6.6" cy="44.6" r="3.3" fill="#fff" />
+	<circle cx="3.4" cy="41.4" r="3.3" fill="#fff" />
+	<!-- Gradient-filled mask hides bone interior, keeping pokéball clean -->
+	<circle cx="24" cy="24" r="13.5" fill="url(#bg)" />
 	<!-- Outer ring -->
 	<circle cx="24" cy="24" r="14.5" stroke="#fff" stroke-width="3.3" fill="none" />
 	<!-- Equator band -->
-	<line x1="9" y1="24" x2="39" y2="24" stroke="#fff" stroke-width="3.3" stroke-linecap="round" />
+	<line x1="9.5" y1="24" x2="38.5" y2="24" stroke="#fff" stroke-width="3.3" stroke-linecap="round" />
 	<!-- Center button ring -->
-	<circle cx="24" cy="24" r="5" stroke="#fff" stroke-width="3.1" fill="none" />
+	<circle cx="24" cy="24" r="5" stroke="#fff" stroke-width="3.1" fill="url(#bg)" />
 	<!-- Center dot -->
 	<circle cx="24" cy="24" r="2" fill="#fff" />
 </svg>

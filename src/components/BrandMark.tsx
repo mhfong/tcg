@@ -19,7 +19,7 @@ export default function BrandMark({ size = 56, iconSize = 26, style }: BrandMark
       boxShadow: '0 4px 16px rgba(224,136,96,0.3)',
       ...style,
     }}>
-      <svg viewBox="0 0 24 24" width={iconSize} height={iconSize} aria-hidden="true">
+      <svg viewBox="0 0 24 24" width={iconSize} height={iconSize} overflow="visible" aria-hidden="true">
         <defs>
           <linearGradient id="bm-bg" x1="0" y1="0" x2="24" y2="24" gradientUnits="userSpaceOnUse">
             <stop offset="0%" stopColor="#e08860" />

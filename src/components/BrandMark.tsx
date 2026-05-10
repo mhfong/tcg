@@ -27,17 +27,17 @@ export default function BrandMark({ size = 56, iconSize = 26, style }: BrandMark
           </linearGradient>
         </defs>
         {/* Bone 1: top-left → bottom-right */}
-        <line x1="2.5" y1="2.5" x2="21.5" y2="21.5" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" />
-        <circle cx="1.7" cy="3.3" r="1.65" fill="#fff" />
-        <circle cx="3.3" cy="1.7" r="1.65" fill="#fff" />
-        <circle cx="20.7" cy="22.3" r="1.65" fill="#fff" />
-        <circle cx="22.3" cy="20.7" r="1.65" fill="#fff" />
+        <line x1="1.0" y1="1.0" x2="23.0" y2="23.0" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" />
+        <circle cx="0.2" cy="1.8" r="1.65" fill="#fff" />
+        <circle cx="1.8" cy="0.2" r="1.65" fill="#fff" />
+        <circle cx="22.2" cy="23.8" r="1.65" fill="#fff" />
+        <circle cx="23.8" cy="22.2" r="1.65" fill="#fff" />
         {/* Bone 2: top-right → bottom-left */}
-        <line x1="21.5" y1="2.5" x2="2.5" y2="21.5" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" />
-        <circle cx="22.3" cy="3.3" r="1.65" fill="#fff" />
-        <circle cx="20.7" cy="1.7" r="1.65" fill="#fff" />
-        <circle cx="3.3" cy="22.3" r="1.65" fill="#fff" />
-        <circle cx="1.7" cy="20.7" r="1.65" fill="#fff" />
+        <line x1="23.0" y1="1.0" x2="1.0" y2="23.0" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" />
+        <circle cx="23.8" cy="1.8" r="1.65" fill="#fff" />
+        <circle cx="22.2" cy="0.2" r="1.65" fill="#fff" />
+        <circle cx="1.8" cy="23.8" r="1.65" fill="#fff" />
+        <circle cx="0.2" cy="22.2" r="1.65" fill="#fff" />
         {/* Gradient-filled mask hides bone interior, keeping pokéball clean */}
         <circle cx="12" cy="12" r="8.65" fill="url(#bm-bg)" />
         {/* Outer ring */}

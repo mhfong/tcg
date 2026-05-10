@@ -1,31 +1,36 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48" fill="none" overflow="visible">
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48" fill="none">
 	<defs>
 		<linearGradient id="bg" x1="8" y1="8" x2="40" y2="40" gradientUnits="userSpaceOnUse">
 			<stop offset="0%" stop-color="#e08860" />
 			<stop offset="100%" stop-color="#b8a4c8" />
 		</linearGradient>
+		<clipPath id="badge">
+			<rect x="4" y="4" width="40" height="40" rx="10" />
+		</clipPath>
 	</defs>
 	<rect x="4" y="4" width="40" height="40" rx="10" fill="url(#bg)" />
-	<!-- Bone 1: top-left (longer) to bottom-right -->
-	<line x1="-1" y1="-1" x2="46" y2="46" stroke="#fff" stroke-width="5.2" stroke-linecap="round" />
-	<circle cx="-2.6" cy="0.6" r="3.3" fill="#fff" />
-	<circle cx="0.6" cy="-2.6" r="3.3" fill="#fff" />
-	<circle cx="44.4" cy="47.6" r="3.3" fill="#fff" />
-	<circle cx="47.6" cy="44.4" r="3.3" fill="#fff" />
-	<!-- Bone 2: top-right (longer) to bottom-left -->
-	<line x1="49" y1="-1" x2="2" y2="46" stroke="#fff" stroke-width="5.2" stroke-linecap="round" />
-	<circle cx="50.6" cy="0.6" r="3.3" fill="#fff" />
-	<circle cx="47.4" cy="-2.6" r="3.3" fill="#fff" />
-	<circle cx="3.6" cy="47.6" r="3.3" fill="#fff" />
-	<circle cx="0.4" cy="44.4" r="3.3" fill="#fff" />
-	<!-- Gradient-filled mask hides bone interior, keeping pokéball clean -->
-	<circle cx="24" cy="24" r="13.5" fill="url(#bg)" />
-	<!-- Outer ring -->
-	<circle cx="24" cy="24" r="14.5" stroke="#fff" stroke-width="3.3" fill="none" />
-	<!-- Equator band -->
-	<line x1="9.5" y1="24" x2="38.5" y2="24" stroke="#fff" stroke-width="3.3" stroke-linecap="round" />
-	<!-- Center button ring -->
-	<circle cx="24" cy="24" r="5" stroke="#fff" stroke-width="3.1" fill="url(#bg)" />
-	<!-- Center dot -->
-	<circle cx="24" cy="24" r="2" fill="#fff" />
+	<g clip-path="url(#badge)">
+		<!-- Bone 1: top-left (longer) to bottom-right -->
+		<line x1="-1" y1="-1" x2="46" y2="46" stroke="#fff" stroke-width="5.2" stroke-linecap="round" />
+		<circle cx="-2.6" cy="0.6" r="3.3" fill="#fff" />
+		<circle cx="0.6" cy="-2.6" r="3.3" fill="#fff" />
+		<circle cx="44.4" cy="47.6" r="3.3" fill="#fff" />
+		<circle cx="47.6" cy="44.4" r="3.3" fill="#fff" />
+		<!-- Bone 2: top-right (longer) to bottom-left -->
+		<line x1="49" y1="-1" x2="2" y2="46" stroke="#fff" stroke-width="5.2" stroke-linecap="round" />
+		<circle cx="50.6" cy="0.6" r="3.3" fill="#fff" />
+		<circle cx="47.4" cy="-2.6" r="3.3" fill="#fff" />
+		<circle cx="3.6" cy="47.6" r="3.3" fill="#fff" />
+		<circle cx="0.4" cy="44.4" r="3.3" fill="#fff" />
+		<!-- Gradient-filled mask hides bone interior, keeping pokéball clean -->
+		<circle cx="24" cy="24" r="13.5" fill="url(#bg)" />
+		<!-- Outer ring -->
+		<circle cx="24" cy="24" r="14.5" stroke="#fff" stroke-width="3.3" fill="none" />
+		<!-- Equator band -->
+		<line x1="9.5" y1="24" x2="38.5" y2="24" stroke="#fff" stroke-width="3.3" stroke-linecap="round" />
+		<!-- Center button ring -->
+		<circle cx="24" cy="24" r="5" stroke="#fff" stroke-width="3.1" fill="url(#bg)" />
+		<!-- Center dot -->
+		<circle cx="24" cy="24" r="2" fill="#fff" />
+	</g>
 </svg>

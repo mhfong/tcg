@@ -20,9 +20,17 @@ export default function BrandMark({ size = 56, iconSize = 26, style }: BrandMark
       ...style,
     }}>
       <svg viewBox="0 0 24 24" width={iconSize} height={iconSize} aria-hidden="true">
-        <rect x="6.2" y="4.5" width="11.1" height="14.2" rx="2.4" transform="rotate(-12 11.75 11.6)" fill="rgba(255,255,255,0.35)" />
-        <rect x="7.2" y="5.1" width="11.1" height="14.2" rx="2.4" transform="rotate(12 12.75 12.2)" fill="#fff" />
-        <path d="M17.5 5.9l.8 1.8 1.8.8-1.8.8-.8 1.8-.8-1.8-1.8-.8 1.8-.8z" fill="#fff8f2" />
+        {/* Outer ring */}
+        <circle cx="12" cy="12" r="9.2" stroke="#fff" strokeWidth="2.1" fill="none" />
+        {/* X cross — back layer */}
+        <line x1="5.8" y1="5.8" x2="18.2" y2="18.2" stroke="rgba(255,255,255,0.3)" strokeWidth="2.2" strokeLinecap="round" />
+        <line x1="18.2" y1="5.8" x2="5.8" y2="18.2" stroke="rgba(255,255,255,0.3)" strokeWidth="2.2" strokeLinecap="round" />
+        {/* Equator band */}
+        <line x1="2.6" y1="12" x2="21.4" y2="12" stroke="#fff" strokeWidth="2.1" strokeLinecap="round" />
+        {/* Center button ring */}
+        <circle cx="12" cy="12" r="3.1" stroke="#fff" strokeWidth="2" fill="none" />
+        {/* Center dot */}
+        <circle cx="12" cy="12" r="1.25" fill="#fff" />
       </svg>
     </div>
   )

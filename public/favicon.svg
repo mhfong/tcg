@@ -6,18 +6,18 @@
 		</linearGradient>
 	</defs>
 	<rect x="4" y="4" width="40" height="40" rx="10" fill="url(#bg)" />
-	<!-- Bone 1: top-left to bottom-right -->
-	<line x1="5" y1="5" x2="43" y2="43" stroke="#fff" stroke-width="5.2" stroke-linecap="round" />
-	<circle cx="3.4" cy="6.6" r="3.3" fill="#fff" />
-	<circle cx="6.6" cy="3.4" r="3.3" fill="#fff" />
-	<circle cx="41.4" cy="44.6" r="3.3" fill="#fff" />
-	<circle cx="44.6" cy="41.4" r="3.3" fill="#fff" />
-	<!-- Bone 2: top-right to bottom-left -->
-	<line x1="43" y1="5" x2="5" y2="43" stroke="#fff" stroke-width="5.2" stroke-linecap="round" />
-	<circle cx="44.6" cy="6.6" r="3.3" fill="#fff" />
-	<circle cx="41.4" cy="3.4" r="3.3" fill="#fff" />
-	<circle cx="6.6" cy="44.6" r="3.3" fill="#fff" />
-	<circle cx="3.4" cy="41.4" r="3.3" fill="#fff" />
+	<!-- Bone 1: top-left (long) to bottom-right (short) -->
+	<line x1="1" y1="1" x2="40" y2="40" stroke="#fff" stroke-width="5.2" stroke-linecap="round" />
+	<circle cx="-0.6" cy="2.6" r="3.3" fill="#fff" />
+	<circle cx="2.6" cy="-0.6" r="3.3" fill="#fff" />
+	<circle cx="38.4" cy="41.6" r="3.3" fill="#fff" />
+	<circle cx="41.6" cy="38.4" r="3.3" fill="#fff" />
+	<!-- Bone 2: top-right (long) to bottom-left (short) -->
+	<line x1="47" y1="1" x2="8" y2="40" stroke="#fff" stroke-width="5.2" stroke-linecap="round" />
+	<circle cx="48.6" cy="2.6" r="3.3" fill="#fff" />
+	<circle cx="45.4" cy="-0.6" r="3.3" fill="#fff" />
+	<circle cx="6.4" cy="41.6" r="3.3" fill="#fff" />
+	<circle cx="9.6" cy="38.4" r="3.3" fill="#fff" />
 	<!-- Gradient-filled mask hides bone interior, keeping pokéball clean -->
 	<circle cx="24" cy="24" r="13.5" fill="url(#bg)" />
 	<!-- Outer ring -->

@@ -6,11 +6,21 @@
 		</linearGradient>
 	</defs>
 	<rect x="4" y="4" width="40" height="40" rx="10" fill="url(#bg)" />
+	<!-- Crossbones back layer -->
+	<!-- Bone 1: top-left to bottom-right -->
+	<line x1="10" y1="10" x2="38" y2="38" stroke="rgba(255,255,255,0.3)" stroke-width="3" stroke-linecap="round" />
+	<circle cx="8.8" cy="11.2" r="2.2" fill="rgba(255,255,255,0.3)" />
+	<circle cx="11.2" cy="8.8" r="2.2" fill="rgba(255,255,255,0.3)" />
+	<circle cx="36.8" cy="39.2" r="2.2" fill="rgba(255,255,255,0.3)" />
+	<circle cx="39.2" cy="36.8" r="2.2" fill="rgba(255,255,255,0.3)" />
+	<!-- Bone 2: top-right to bottom-left -->
+	<line x1="38" y1="10" x2="10" y2="38" stroke="rgba(255,255,255,0.3)" stroke-width="3" stroke-linecap="round" />
+	<circle cx="39.2" cy="11.2" r="2.2" fill="rgba(255,255,255,0.3)" />
+	<circle cx="36.8" cy="8.8" r="2.2" fill="rgba(255,255,255,0.3)" />
+	<circle cx="11.2" cy="39.2" r="2.2" fill="rgba(255,255,255,0.3)" />
+	<circle cx="8.8" cy="36.8" r="2.2" fill="rgba(255,255,255,0.3)" />
 	<!-- Outer ring -->
 	<circle cx="24" cy="24" r="14.5" stroke="#fff" stroke-width="3.3" fill="none" />
-	<!-- X cross back layer -->
-	<line x1="13" y1="13" x2="35" y2="35" stroke="rgba(255,255,255,0.3)" stroke-width="3.4" stroke-linecap="round" />
-	<line x1="35" y1="13" x2="13" y2="35" stroke="rgba(255,255,255,0.3)" stroke-width="3.4" stroke-linecap="round" />
 	<!-- Equator band -->
 	<line x1="9" y1="24" x2="39" y2="24" stroke="#fff" stroke-width="3.3" stroke-linecap="round" />
 	<!-- Center button ring -->

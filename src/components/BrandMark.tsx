@@ -20,11 +20,21 @@ export default function BrandMark({ size = 56, iconSize = 26, style }: BrandMark
       ...style,
     }}>
       <svg viewBox="0 0 24 24" width={iconSize} height={iconSize} aria-hidden="true">
+        {/* Crossbones — back layer */}
+        {/* Bone 1: top-left → bottom-right */}
+        <line x1="4.5" y1="4.5" x2="19.5" y2="19.5" stroke="rgba(255,255,255,0.3)" strokeWidth="1.8" strokeLinecap="round" />
+        <circle cx="3.9" cy="5.1" r="1.15" fill="rgba(255,255,255,0.3)" />
+        <circle cx="5.1" cy="3.9" r="1.15" fill="rgba(255,255,255,0.3)" />
+        <circle cx="18.9" cy="20.1" r="1.15" fill="rgba(255,255,255,0.3)" />
+        <circle cx="20.1" cy="18.9" r="1.15" fill="rgba(255,255,255,0.3)" />
+        {/* Bone 2: top-right → bottom-left */}
+        <line x1="19.5" y1="4.5" x2="4.5" y2="19.5" stroke="rgba(255,255,255,0.3)" strokeWidth="1.8" strokeLinecap="round" />
+        <circle cx="20.1" cy="5.1" r="1.15" fill="rgba(255,255,255,0.3)" />
+        <circle cx="18.9" cy="3.9" r="1.15" fill="rgba(255,255,255,0.3)" />
+        <circle cx="5.1" cy="20.1" r="1.15" fill="rgba(255,255,255,0.3)" />
+        <circle cx="3.9" cy="18.9" r="1.15" fill="rgba(255,255,255,0.3)" />
         {/* Outer ring */}
         <circle cx="12" cy="12" r="9.2" stroke="#fff" strokeWidth="2.1" fill="none" />
-        {/* X cross — back layer */}
-        <line x1="5.8" y1="5.8" x2="18.2" y2="18.2" stroke="rgba(255,255,255,0.3)" strokeWidth="2.2" strokeLinecap="round" />
-        <line x1="18.2" y1="5.8" x2="5.8" y2="18.2" stroke="rgba(255,255,255,0.3)" strokeWidth="2.2" strokeLinecap="round" />
         {/* Equator band */}
         <line x1="2.6" y1="12" x2="21.4" y2="12" stroke="#fff" strokeWidth="2.1" strokeLinecap="round" />
         {/* Center button ring */}

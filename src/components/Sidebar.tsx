@@ -16,13 +16,10 @@ type NavItem = {
 function DashboardIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" {...props}>
-      <path d="M4.75 6h14.5a.75.75 0 0 1 .75.75v10.5a.75.75 0 0 1-.75.75H4.75a.75.75 0 0 1-.75-.75V6.75A.75.75 0 0 1 4.75 6Z" />
-      <path d="M4 9.5h16" />
-      <path d="M7 7.75h1.5" />
-      <path d="M10 7.75h1.5" />
-      <path d="M8.5 12.2h3.8" />
-      <path d="M12.8 12.2v3.3" />
-      <path d="M15.5 10.2v5.3" />
+      <path d="M5.25 18.25h13.5" />
+      <path d="M5.75 18.25V6.75" />
+      <path d="m7.4 14.85 3.35-3.35 2.35 2.35 4.5-4.5" />
+      <path d="M14.9 9.35h2.95v2.95" />
     </svg>
   )
 }
@@ -65,20 +62,6 @@ function InventoryIcon(props: SVGProps<SVGSVGElement>) {
   )
 }
 
-function WebIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" {...props}>
-      <rect x="4.25" y="5.5" width="15.5" height="13" rx="2.6" />
-      <path d="M4.25 9h15.5" />
-      <circle cx="7.2" cy="7.2" r="0.75" fill="currentColor" stroke="none" />
-      <circle cx="9.2" cy="7.2" r="0.75" fill="currentColor" stroke="none" />
-      <circle cx="11.2" cy="7.2" r="0.75" fill="currentColor" stroke="none" />
-      <path d="M8.5 13.2h7" />
-      <path d="M8.5 15.5h4.6" />
-    </svg>
-  )
-}
-
 const desktopNavItems: NavItem[] = [
   { to: '/', label: 'Dashboard', Icon: DashboardIcon, end: true },
   { to: '/watchlist', label: 'Watchlist', Icon: WatchlistIcon },
@@ -90,7 +73,7 @@ const desktopNavItems: NavItem[] = [
 const mobileNavItems: NavItem[] = [
   { to: '/settings', label: 'Settings', Icon: SettingsIcon },
   { to: '/transactions', label: 'Transactions', Icon: TransactionsIcon },
-  { to: '/', label: 'Dashboard', Icon: WebIcon, end: true, center: true },
+  { to: '/', label: 'Dashboard', Icon: DashboardIcon, end: true, center: true },
   { to: '/watchlist', label: 'Watchlist', Icon: WatchlistIcon },
   { to: '/inventory', label: 'Inventory', Icon: InventoryIcon },
 ]

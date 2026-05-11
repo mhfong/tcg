@@ -15,21 +15,11 @@ type NavItem = {
 
 function DashboardIcon(props: SVGProps<SVGSVGElement>) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" {...props}>
-      {/* Candle 1 — bearish (left) */}
-      <line x1="7" y1="5.5" x2="7" y2="7.5" />
-      <rect x="5.5" y="7.5" width="3" height="5" rx="0.4" />
-      <line x1="7" y1="12.5" x2="7" y2="14" />
-      {/* Candle 2 — bullish (middle) */}
-      <line x1="12" y1="4" x2="12" y2="6.5" />
-      <rect x="10.5" y="6.5" width="3" height="7" rx="0.4" />
-      <line x1="12" y1="13.5" x2="12" y2="15.5" />
-      {/* Candle 3 — bullish (right) */}
-      <line x1="17" y1="6" x2="17" y2="8" />
-      <rect x="15.5" y="8" width="3" height="5.5" rx="0.4" />
-      <line x1="17" y1="13.5" x2="17" y2="15.5" />
-      {/* Baseline */}
-      <line x1="4" y1="18.5" x2="20" y2="18.5" />
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M5.25 18.25h13.5" />
+      <path d="M5.75 18.25V6.75" />
+      <path d="m7.4 14.85 3.35-3.35 2.35 2.35 4.5-4.5" />
+      <path d="M14.9 9.35h2.95v2.95" />
     </svg>
   )
 }

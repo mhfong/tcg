@@ -363,9 +363,10 @@ select.input { appearance: none; cursor: pointer; }
 
 .mobile-nav-link--dashboard {
   justify-self: center;
+  align-self: center;
   padding-top: 0;
   padding-bottom: 0;
-  transform: translateY(-1.28rem);
+  transform: translateY(-0.82rem);
 }
 
 .mobile-nav-link__button {

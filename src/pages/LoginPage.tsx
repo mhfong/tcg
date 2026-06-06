@@ -54,7 +54,7 @@ export default function LoginPage() {
         }}>
           <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
             <BrandMark size={56} iconSize={28} style={{ margin: '0 auto 0.75rem' }} />
-            <h1 style={{ fontSize: '1.375rem', fontWeight: 800, color: 'var(--text-primary)' }}>TCG Market Intelligence</h1>
+            <h1 style={{ fontSize: '1.375rem', fontWeight: 800, color: 'var(--text-primary)' }}>TCG Pro</h1>
             <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem', fontWeight: 600 }}>
               Japanese PTCG & OPCG Tracker
             </p>

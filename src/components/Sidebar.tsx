@@ -88,7 +88,7 @@ export default function Sidebar() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
             <BrandMark size={36} iconSize={18} />
             <div>
-              <div style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--text-primary)' }}>TCG Intel</div>
+              <div style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--text-primary)' }}>TCG Pro</div>
               <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', fontWeight: 600, letterSpacing: '0.05em' }}>PTCG / OPCG</div>
             </div>
           </div>

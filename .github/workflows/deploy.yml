@@ -34,6 +34,9 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          # Optional: yuyu-tei parser URL. Falls back to URL-only local
+          # parser in DatabasePage.tsx when unset.
+          VITE_YUYUTEI_PARSE_URL: ${{ secrets.VITE_YUYUTEI_PARSE_URL }}
         run: npm run build
 
       - uses: actions/configure-pages@v4

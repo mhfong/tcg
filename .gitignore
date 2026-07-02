@@ -25,7 +25,6 @@ dist-ssr
 *.sw?
 
 secret*
-.github
 # Agent skills — kept locally, not pushed to GitHub
 .github/skills/
 

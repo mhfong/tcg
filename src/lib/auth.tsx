@@ -13,12 +13,36 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
+// Preview-only auth shim. Never enable in production builds.
+const PREVIEW_BYPASS =
+  import.meta.env.VITE_PREVIEW_AUTH_BYPASS === 'true' && import.meta.env.DEV
+
+const PREVIEW_FAKE_USER = {
+  id: '00000000-0000-0000-0000-000000000000',
+  email: 'preview@local',
+  app_metadata: {},
+  user_metadata: {},
+  aud: 'authenticated',
+  created_at: new Date().toISOString(),
+} as unknown as User
+
+const PREVIEW_FAKE_SESSION = {
+  access_token: 'preview-token',
+  refresh_token: 'preview-refresh',
+  expires_in: 3600,
+  expires_at: Math.floor(Date.now() / 1000) + 3600,
+  token_type: 'bearer',
+  user: PREVIEW_FAKE_USER,
+} as unknown as Session
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null)
-  const [session, setSession] = useState<Session | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [user, setUser] = useState<User | null>(PREVIEW_BYPASS ? PREVIEW_FAKE_USER : null)
+  const [session, setSession] = useState<Session | null>(PREVIEW_BYPASS ? PREVIEW_FAKE_SESSION : null)
+  const [loading, setLoading] = useState(!PREVIEW_BYPASS)
 
   useEffect(() => {
+    if (PREVIEW_BYPASS) return // keep fake user, skip real auth bootstrap
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
       setUser(session?.user ?? null)

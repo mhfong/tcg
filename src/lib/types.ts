@@ -6,6 +6,8 @@ export interface CardDefinition {
   name_jp: string
   name_en: string
   rarity: string
+  yuyutei_url?: string | null
+  snkrdunk_url?: string | null
 }
 
 export interface WatchlistItem {

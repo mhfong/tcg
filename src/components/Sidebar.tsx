@@ -62,11 +62,22 @@ function InventoryIcon(props: SVGProps<SVGSVGElement>) {
   )
 }
 
+function DatabaseIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <ellipse cx="12" cy="6" rx="7" ry="2.5" />
+      <path d="M5 6v6c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5V6" />
+      <path d="M5 12v6c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5v-6" />
+    </svg>
+  )
+}
+
 const desktopNavItems: NavItem[] = [
   { to: '/', label: 'Dashboard', Icon: DashboardIcon, end: true },
   { to: '/watchlist', label: 'Watchlist', Icon: WatchlistIcon },
   { to: '/transactions', label: 'Transactions', Icon: TransactionsIcon },
   { to: '/inventory', label: 'Inventory', Icon: InventoryIcon },
+  { to: '/database', label: 'Database', Icon: DatabaseIcon },
   { to: '/settings', label: 'Settings', Icon: SettingsIcon },
 ]
 
@@ -76,6 +87,7 @@ const mobileNavItems: NavItem[] = [
   { to: '/', label: 'Dashboard', Icon: DashboardIcon, end: true, center: true },
   { to: '/watchlist', label: 'Watchlist', Icon: WatchlistIcon },
   { to: '/inventory', label: 'Inventory', Icon: InventoryIcon },
+  { to: '/database', label: 'Database', Icon: DatabaseIcon },
 ]
 
 export default function Sidebar() {

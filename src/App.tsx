@@ -7,6 +7,7 @@ import WatchlistPage from './pages/WatchlistPage'
 import TransactionPage from './pages/TransactionPage'
 import InventoryPage from './pages/InventoryPage'
 import SettingsPage from './pages/SettingsPage'
+import DatabasePage from './pages/DatabasePage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
@@ -39,6 +40,7 @@ function AppRoutes() {
         <Route path="/watchlist" element={<WatchlistPage />} />
         <Route path="/transactions" element={<TransactionPage />} />
         <Route path="/inventory" element={<InventoryPage />} />
+        <Route path="/database" element={<DatabasePage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" />} />

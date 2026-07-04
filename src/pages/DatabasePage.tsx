@@ -193,7 +193,19 @@ export default function DatabasePage() {
 
     setSubmitting(false)
     if (insertError) {
-      setError(insertError.message)
+      // Supabase returns code 23505 (unique_violation) for duplicate keys.
+      // The message is something like:
+      //   "duplicate key value violates unique constraint \"master_table_pkey\""
+      // Translate that into a friendlier message for the user.
+      const isDuplicate =
+        insertError.code === '23505' ||
+        /duplicate key value/i.test(insertError.message) ||
+        /unique constraint/i.test(insertError.message)
+      if (isDuplicate) {
+        setError('This card already exists in the database!')
+      } else {
+        setError(insertError.message)
+      }
       return
     }
     const count = batch.length

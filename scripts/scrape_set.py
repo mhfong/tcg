@@ -71,13 +71,51 @@ def list_rarities(tcg_code: str, series: str) -> list[str]:
     Example: ["UR", "HR", "SAR", "MA", "CHR", "AR", "SR", "RR", "R", ...]
 
     On OPCG sets, a synthetic "GOLD-DON" entry is appended when the page
-    has a <span>-</span> section (containing ドン!!カード super-parallels).
+    has a <span>-</span> section that actually contains super-parallel
+    (スーパーパラレル) ドン!! cards. Some sets (e.g. op12) have a dash
+    section but no real スーパーパラレル entries — only cross-set promo
+    cards (with leading/trailing spaces in their alts) appear there. We
+    ignore those and skip the synthetic entry.
     """
     html = fetch_set_page(tcg_code, series)
     rarities = list({m.group(1).upper() for m in SECTION_HEADER_RE.finditer(html)})
-    if tcg_code.lower() == "opc" and any(r == "-" for r in rarities):
+    if (
+        tcg_code.lower() == "opc"
+        and any(r == "-" for r in rarities)
+        and _has_real_gold_don(html)
+    ):
         rarities.append("GOLD-DON")
     return rarities
+
+
+def _has_real_gold_don(html: str) -> bool:
+    """
+    Return True if the page's <span>-</span> section has at least one
+    super-parallel ドン!! card whose alt is not surrounded by whitespace
+    (sidebar/related items have padded alts and are not real section
+    content).
+    """
+    header_m = re.search(
+        r'<span[^>]*>-</span>\s*Card\s*List',
+        html,
+        re.IGNORECASE,
+    )
+    if not header_m:
+        return False
+    start = header_m.end()
+    next_m = SECTION_HEADER_RE.search(html, start)
+    end = next_m.start() if next_m else len(html)
+    section = html[start:end]
+    for alt_m in ALT_RE.finditer(section):
+        alt = alt_m.group(1)
+        # A real section card's alt has no leading/trailing whitespace.
+        if alt != alt.strip():
+            continue
+        if not alt.startswith("- -"):
+            continue
+        if "スーパーパラレル" in alt:
+            return True
+    return False
 
 
 def fetch_cards_in_rarity(
@@ -201,11 +239,15 @@ def _fetch_gold_don_cards(tcg_code: str, series: str, html: str) -> list[dict]:
             continue
 
         # Find the alt that is a DON!! card and is the gold/super-parallel
-        # variant (must contain スーパーパラレル).
+        # variant (must contain スーパーパラレル). Skip alts that have
+        # leading/trailing whitespace — those are sidebar/related cards
+        # from other sets, not real section content.
         gold_alt: Optional[str] = None
         for alt_m in ALT_RE.finditer(prod):
-            alt = alt_m.group(1).strip()
+            alt = alt_m.group(1)
             if alt == "Star":
+                continue
+            if alt != alt.strip():
                 continue
             if not alt.startswith("- -"):
                 continue

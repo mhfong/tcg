@@ -8,12 +8,11 @@ type TcgType = 'PTCG' | 'OPCG'
 
 interface PreviewCard {
   tcg_type: TcgType
-  series: string
-  card_number: string
-  name_jp: string
-  name_en: string
-  rarity: string
-  yuyutei_url: string
+  card_series: string
+  card_index: string
+  card_name: string
+  card_rarity: string
+  url_yuyutei: string
   image_url: string
 }
 
@@ -57,7 +56,7 @@ export default function DatabasePage() {
   async function loadCards() {
     setLoading(true)
     const { data, error: e } = await supabase
-      .from('cards')
+      .from('master_table')
       .select('*')
       .order('created_at', { ascending: false })
       .limit(500)
@@ -114,14 +113,13 @@ export default function DatabasePage() {
     setError(null)
     setSubmitting(true)
 
-    const { error: insertError } = await supabase.from('cards').insert({
+    const { error: insertError } = await supabase.from('master_table').insert({
       tcg_type: preview.tcg_type,
-      series: preview.series,
-      card_number: preview.card_number,
-      name_jp: preview.name_jp,
-      name_en: preview.name_en,
-      rarity: preview.rarity,
-      yuyutei_url: preview.yuyutei_url,
+      card_series: preview.card_series,
+      card_index: preview.card_index,
+      card_name: preview.card_name,
+      card_rarity: preview.card_rarity,
+      url_yuyutei: preview.url_yuyutei,
     })
 
     setSubmitting(false)
@@ -129,7 +127,7 @@ export default function DatabasePage() {
       setError(insertError.message)
       return
     }
-    setSuccess(`Added "${preview.series} ${preview.card_number}" to the master database`)
+    setSuccess(`Added "${preview.card_series} ${preview.card_index}" to the master database`)
     setStage('saved')
     setPreview(null)
     setUrl('')
@@ -153,11 +151,10 @@ export default function DatabasePage() {
       if (filterTcg !== 'all' && c.tcg_type !== filterTcg) return false
       if (!q) return true
       return (
-        c.series.toLowerCase().includes(q) ||
-        c.card_number.toLowerCase().includes(q) ||
-        c.name_jp.toLowerCase().includes(q) ||
-        c.name_en.toLowerCase().includes(q) ||
-        c.rarity.toLowerCase().includes(q)
+        c.card_series.toLowerCase().includes(q) ||
+        c.card_index.toLowerCase().includes(q) ||
+        c.card_name.toLowerCase().includes(q) ||
+        c.card_rarity.toLowerCase().includes(q)
       )
     })
   }, [cards, searchTerm, filterTcg])
@@ -257,7 +254,7 @@ export default function DatabasePage() {
                     <select
                       className="input"
                       value={preview.tcg_type}
-                      onChange={e => updatePreview({ tcg_type: e.target.value as TcgType, series: '', rarity: '' })}
+                      onChange={e => updatePreview({ tcg_type: e.target.value as TcgType, card_series: '', card_rarity: '' })}
                     >
                       <option value="PTCG">PTCG</option>
                       <option value="OPCG">OPCG</option>
@@ -268,8 +265,8 @@ export default function DatabasePage() {
                     <input
                       list="series-options"
                       className="input"
-                      value={preview.series}
-                      onChange={e => updatePreview({ series: e.target.value })}
+                      value={preview.card_series}
+                      onChange={e => updatePreview({ card_series: e.target.value })}
                     />
                     <datalist id="series-options">
                       {seriesList.map(s => <option key={s} value={s} />)}
@@ -279,8 +276,8 @@ export default function DatabasePage() {
                     <label className="form-label">Card #</label>
                     <input
                       className="input"
-                      value={preview.card_number}
-                      onChange={e => updatePreview({ card_number: e.target.value })}
+                      value={preview.card_index}
+                      onChange={e => updatePreview({ card_index: e.target.value })}
                     />
                   </div>
                   <div className="form-field">
@@ -288,28 +285,19 @@ export default function DatabasePage() {
                     <input
                       list="rarity-options"
                       className="input"
-                      value={preview.rarity}
-                      onChange={e => updatePreview({ rarity: e.target.value })}
+                      value={preview.card_rarity}
+                      onChange={e => updatePreview({ card_rarity: e.target.value })}
                     />
                     <datalist id="rarity-options">
                       {rarities.map(r => <option key={r} value={r} />)}
                     </datalist>
                   </div>
-                  <div className="form-field">
-                    <label className="form-label">Name (JP)</label>
+                  <div className="form-field form-field--full">
+                    <label className="form-label">Card Name</label>
                     <input
                       className="input"
-                      value={preview.name_jp}
-                      onChange={e => updatePreview({ name_jp: e.target.value })}
-                    />
-                  </div>
-                  <div className="form-field">
-                    <label className="form-label">Name (EN)</label>
-                    <input
-                      className="input"
-                      placeholder="optional"
-                      value={preview.name_en}
-                      onChange={e => updatePreview({ name_en: e.target.value })}
+                      value={preview.card_name}
+                      onChange={e => updatePreview({ card_name: e.target.value })}
                     />
                   </div>
                 </form>
@@ -389,8 +377,7 @@ export default function DatabasePage() {
                 <th>Series</th>
                 <th>Card #</th>
                 <th>Rarity</th>
-                <th>Name (JP)</th>
-                <th>Name (EN)</th>
+                <th>Name</th>
                 <th>Yuyutei</th>
               </tr>
             </thead>
@@ -402,15 +389,14 @@ export default function DatabasePage() {
                       {c.tcg_type}
                     </span>
                   </td>
-                  <td>{c.series}</td>
-                  <td>{c.card_number}</td>
-                  <td>{c.rarity}</td>
-                  <td>{c.name_jp || '—'}</td>
-                  <td>{c.name_en || '—'}</td>
+                  <td>{c.card_series}</td>
+                  <td>{c.card_index}</td>
+                  <td>{c.card_rarity}</td>
+                  <td>{c.card_name || '—'}</td>
                   <td>
-                    {c.yuyutei_url ? (
+                    {c.url_yuyutei ? (
                       <a
-                        href={c.yuyutei_url}
+                        href={c.url_yuyutei}
                         target="_blank"
                         rel="noreferrer"
                         className="link"
@@ -449,12 +435,11 @@ async function parseLocally(url: string): Promise<PreviewCard> {
 
   return {
     tcg_type,
-    series,
-    card_number: '',
-    name_jp: '',
-    name_en: '',
-    rarity: '',
-    yuyutei_url: url,
+    card_series: series,
+    card_index: '',
+    card_name: '',
+    card_rarity: '',
+    url_yuyutei: url,
     image_url,
   }
 }

@@ -26,7 +26,7 @@ export default function TransactionPage() {
     setLoading(true)
     const { data } = await supabase
       .from('transactions')
-      .select('*, card:cards(*)')
+      .select('*, card:master_table(*)')
       .eq('user_id', user!.id)
       .order('date', { ascending: false })
     if (data) setTransactions(data as (Transaction & { card: CardDefinition })[])
@@ -34,7 +34,7 @@ export default function TransactionPage() {
   }
 
   async function loadCards() {
-    const { data } = await supabase.from('cards').select('*').order('series').order('card_number')
+    const { data } = await supabase.from('master_table').select('*').order('card_series').order('card_index')
     if (data) setCards(data as CardDefinition[])
   }
 
@@ -104,7 +104,7 @@ export default function TransactionPage() {
               <select className="input" value={form.card_id} onChange={e => setForm({ ...form, card_id: e.target.value })} required>
                 <option value="">Select a card...</option>
                 {cards.map(c => (
-                  <option key={c.id} value={c.id}>[{c.tcg_type}] {c.series} {c.card_number} - {c.name_jp} ({c.rarity})</option>
+                  <option key={c.id} value={c.id}>[{c.tcg_type}] {c.card_series} {c.card_index} - {c.card_name} ({c.card_rarity})</option>
                 ))}
               </select>
             </div>
@@ -184,8 +184,8 @@ export default function TransactionPage() {
                     </span>
                   </td>
                   <td>
-                    <div style={{ fontWeight: 500 }}>{t.card?.name_jp}</div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{t.card?.series} {t.card?.card_number}</div>
+                    <div style={{ fontWeight: 500 }}>{t.card?.card_name}</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{t.card?.card_series} {t.card?.card_index}</div>
                   </td>
                   <td>{t.condition === 'RAW_A' ? 'RAW (A)' : t.condition}</td>
                   <td style={{ textAlign: 'right' }}>¥{t.price.toLocaleString()}</td>

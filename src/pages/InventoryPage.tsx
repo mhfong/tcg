@@ -19,7 +19,7 @@ export default function InventoryPage() {
     // Get all transactions for user
     const { data: transactions } = await supabase
       .from('transactions')
-      .select('*, card:cards(*)')
+      .select('*, card:master_table(*)')
       .eq('user_id', user!.id)
       .order('date', { ascending: true })
 
@@ -171,8 +171,8 @@ export default function InventoryPage() {
                 <tr key={`${item.card_id}__${item.condition}`}>
                   <td><span className={`tag ${item.card?.tcg_type === 'PTCG' ? 'tag-ptcg' : 'tag-opcg'}`}>{item.card?.tcg_type}</span></td>
                   <td>
-                    <div style={{ fontWeight: 500 }}>{item.card?.name_jp}</div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{item.card?.series} {item.card?.card_number} · {item.card?.rarity}</div>
+                    <div style={{ fontWeight: 500 }}>{item.card?.card_name}</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{item.card?.card_series} {item.card?.card_index} · {item.card?.card_rarity}</div>
                   </td>
                   <td>{item.condition === 'RAW_A' ? 'RAW (A)' : item.condition}</td>
                   <td style={{ textAlign: 'right' }}>{item.quantity}</td>

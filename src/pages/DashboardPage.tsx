@@ -36,7 +36,7 @@ export default function DashboardPage() {
     // Get watchlist items
     const { data: watchlist } = await supabase
       .from('watchlist')
-      .select('*, card:cards(*)')
+      .select('*, card:master_table(*)')
       .eq('user_id', user!.id)
 
     if (!watchlist || watchlist.length === 0) {
@@ -55,9 +55,9 @@ export default function DashboardPage() {
 
     if (prices) {
       const grouped: Record<string, ChartData> = {}
-      for (const w of watchlist as (WatchlistItem & { card: { name_jp: string } })[]) {
+      for (const w of watchlist as (WatchlistItem & { card: { card_name: string } })[]) {
         grouped[w.card_id] = {
-          card_name: w.card?.name_jp || w.card_id,
+          card_name: w.card?.card_name || w.card_id,
           card_id: w.card_id,
           data: []
         }

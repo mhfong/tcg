@@ -28,7 +28,7 @@ export default function WatchlistPage() {
     setLoading(true)
     const { data } = await supabase
       .from('watchlist')
-      .select('*, card:cards(*)')
+      .select('*, card:master_table(*)')
       .eq('user_id', user!.id)
       .order('created_at', { ascending: false })
 
@@ -74,7 +74,7 @@ export default function WatchlistPage() {
   }
 
   async function loadCards() {
-    const { data } = await supabase.from('cards').select('*').order('series').order('card_number')
+    const { data } = await supabase.from('master_table').select('*').order('card_series').order('card_index')
     if (data) setCards(data as CardDefinition[])
   }
 
@@ -100,10 +100,9 @@ export default function WatchlistPage() {
       if (filterTcg !== 'all' && c.tcg_type !== filterTcg) return false
       if (searchTerm) {
         const term = searchTerm.toLowerCase()
-        return c.name_jp.toLowerCase().includes(term) ||
-          c.name_en.toLowerCase().includes(term) ||
-          c.card_number.toLowerCase().includes(term) ||
-          c.series.toLowerCase().includes(term)
+        return c.card_name.toLowerCase().includes(term) ||
+          c.card_index.toLowerCase().includes(term) ||
+          c.card_series.toLowerCase().includes(term)
       }
       return true
     })
@@ -159,10 +158,10 @@ export default function WatchlistPage() {
                   {filteredCards.slice(0, 50).map(card => (
                     <tr key={card.id}>
                       <td><span className={`tag ${card.tcg_type === 'PTCG' ? 'tag-ptcg' : 'tag-opcg'}`}>{card.tcg_type}</span></td>
-                      <td>{card.series}</td>
-                      <td>{card.card_number}</td>
-                      <td>{card.name_jp}</td>
-                      <td>{card.rarity}</td>
+                      <td>{card.card_series}</td>
+                      <td>{card.card_index}</td>
+                      <td>{card.card_name}</td>
+                      <td>{card.card_rarity}</td>
                       <td><button className="btn btn-primary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }} onClick={() => addToWatchlist(card.id)}>+ Add</button></td>
                     </tr>
                   ))}
@@ -201,12 +200,12 @@ export default function WatchlistPage() {
                 return (
                   <tr key={w.id}>
                     <td><span className={`tag ${w.card.tcg_type === 'PTCG' ? 'tag-ptcg' : 'tag-opcg'}`}>{w.card.tcg_type}</span></td>
-                    <td>{w.card.series}</td>
+                    <td>{w.card.card_series}</td>
                     <td>
-                      <div style={{ fontWeight: 500 }}>{w.card.name_jp}</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{w.card.card_number}</div>
+                      <div style={{ fontWeight: 500 }}>{w.card.card_name}</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{w.card.card_index}</div>
                     </td>
-                    <td>{w.card.rarity}</td>
+                    <td>{w.card.card_rarity}</td>
                     <td style={{ textAlign: 'right', fontWeight: 700 }}>{pd?.latest_price ? `¥${pd.latest_price.toLocaleString()}` : '—'}</td>
                     <td style={{ textAlign: 'right' }}>{formatPct(pd?.change_7d ?? null)}</td>
                     <td style={{ textAlign: 'right' }}>{formatPct(pd?.change_30d ?? null)}</td>

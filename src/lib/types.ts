@@ -1,13 +1,11 @@
 export interface CardDefinition {
   id: string
   tcg_type: 'PTCG' | 'OPCG'
-  series: string
-  card_number: string
-  name_jp: string
-  name_en: string
-  rarity: string
-  yuyutei_url?: string | null
-  snkrdunk_url?: string | null
+  card_series: string
+  card_index: string
+  card_name: string
+  card_rarity: string
+  url_yuyutei?: string | null
 }
 
 export interface WatchlistItem {

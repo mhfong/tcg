@@ -39,3 +39,4 @@ supabase/.temp/
 # Data folder — never commit; lives only on the local machine
 data/*
 !data/.gitkeep
+.github/*

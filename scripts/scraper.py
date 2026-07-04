@@ -106,7 +106,8 @@ def parse_yuyutei_card(url: str) -> dict:  # noqa: C901  (extraction, kept toget
     Fetch a yuyu-tei product page and return structured card fields.
 
     Returns a dict with:
-      tcg_type, series, card_number, name_jp, rarity, yuyutei_url, image_url
+      tcg_type, card_series, card_index, card_name, card_rarity,
+      url_yuyutei, image_url
 
     On failure, returns {"error": "..."}.
     """
@@ -166,11 +167,11 @@ def parse_yuyutei_card(url: str) -> dict:  # noqa: C901  (extraction, kept toget
 
     return {
         "tcg_type": meta["tcg_type"],
-        "series": series,
-        "card_number": card_number,
-        "name_jp": name_jp,
-        "rarity": rarity,
-        "yuyutei_url": url,
+        "card_series": series,
+        "card_index": card_number,
+        "card_name": name_jp,
+        "card_rarity": rarity,
+        "url_yuyutei": url,
         "image_url": image_url,
     }
 

@@ -45,6 +45,7 @@ export default function DatabasePage() {
   const [batch, setBatch] = useState<PreviewCard[]>([])
   const [parsing, setParsing] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
@@ -65,6 +66,32 @@ export default function DatabasePage() {
     if (e) setError(e.message)
     if (data) setCards(data as CardDefinition[])
     setLoading(false)
+  }
+
+  async function handleDeleteAll() {
+    if (cards.length === 0) return
+    const count = cards.length
+    const confirmed = window.confirm(
+      `Delete ALL ${count} card${count === 1 ? '' : 's'} from the master database?\n\nThis cannot be undone.`,
+    )
+    if (!confirmed) return
+
+    setError(null)
+    setSuccess(null)
+    setDeleting(true)
+
+    const { error: deleteError } = await supabase
+      .from('master_table')
+      .delete()
+      .neq('id', '') // delete every row (id is never empty)
+
+    setDeleting(false)
+    if (deleteError) {
+      setError(`Delete failed: ${deleteError.message}`)
+      return
+    }
+    setSuccess(`Deleted ${count} card${count === 1 ? '' : 's'} from the master database.`)
+    await loadCards()
   }
 
   function startOver() {
@@ -538,6 +565,15 @@ export default function DatabasePage() {
           <option value="PTCG">PTCG only</option>
           <option value="OPCG">OPCG only</option>
         </select>
+        <button
+          type="button"
+          className="btn btn-danger"
+          onClick={handleDeleteAll}
+          disabled={deleting || cards.length === 0}
+          title="Delete every card from the master database"
+        >
+          {deleting ? 'Deleting…' : 'Delete all'}
+        </button>
       </div>
 
       {loading ? (

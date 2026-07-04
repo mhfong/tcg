@@ -4,12 +4,17 @@
  * Scheme:
  *   PTCG: 'ptcg' + series + digits(card_number) + lowercase(rarity) + yuyutei_slug
  *   OPCG: 'opcg' + digits(card_number) + letters-only-lowercase(rarity) + yuyutei_slug
+ *   OPCG GOLD-DON: 'opcg' + series + 'golddon' + yuyutei_slug
+ *     (uses card_series instead of card_index because GOLD-DON cards share
+ *      the synthetic card_index "GOLD-DON" across all sets)
  *
  * Examples:
  *   PTCG: series=s12a, card_number="259/172", rarity="UR", slug="10348"
  *     -> "ptcgs12a259172ur10348"
  *   OPCG: card_number="OP15-119", rarity="P-SEC", slug="10146"
  *     -> "opcg15psec10146"
+ *   OPCG GOLD-DON: series="op16", slug="10150"
+ *     -> "opcgop16golddon10150"
  *
  * The yuyutei slug is the last segment of the yuyu-tei.jp product URL,
  * e.g. "https://yuyu-tei.jp/sell/poc/card/s12a/10348" -> "10348".
@@ -67,6 +72,16 @@ export function makeCardId(input: CardIdInputs): string {
       (input.card_series ?? '').toLowerCase() +
       digitsOnly(input.card_index) +
       (input.card_rarity ?? '').toLowerCase() +
+      slug
+    )
+  }
+  // OPCG GOLD-DON: all GOLD-DON cards share card_index "GOLD-DON", so we
+  // use card_series to disambiguate (e.g. op14 vs op15 vs op16).
+  if ((input.card_rarity ?? '').toUpperCase() === 'GOLD-DON') {
+    return (
+      'opcg' +
+      (input.card_series ?? '').toLowerCase() +
+      'golddon' +
       slug
     )
   }

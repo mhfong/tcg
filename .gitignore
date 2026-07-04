@@ -35,3 +35,7 @@ __pycache__/
 
 # Supabase CLI local cache
 supabase/.temp/
+
+# Data folder — never commit; lives only on the local machine
+data/*
+!data/.gitkeep

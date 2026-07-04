@@ -165,7 +165,17 @@ def parse_yuyutei_card(url: str) -> dict:  # noqa: C901  (extraction, kept toget
     image_tcg = YUYUTEI_IMAGE_TCG_CODES.get(meta["tcg_type"], "poc")
     image_url = f"https://card.yuyu-tei.jp/{image_tcg}/front/{series}/{meta['slug_id']}.jpg"
 
+    # Deterministic card ID — matches the frontend scheme in src/lib/cardId.ts
+    digits = re.sub(r"\D", "", card_number)
+    if meta["tcg_type"] == "PTCG":
+        card_id = f"ptcg{series.lower()}{digits}{rarity.lower()}{meta['slug_id']}"
+    else:  # OPCG
+        rarity_letters = re.sub(r"[^a-z]", "", rarity.lower())
+        opcg_index = re.sub(r"[^a-z0-9]", "", card_number.lower())
+        card_id = f"opcg{opcg_index}{rarity_letters}{meta['slug_id']}"
+
     return {
+        "id": card_id,
         "tcg_type": meta["tcg_type"],
         "card_series": series,
         "card_index": card_number,

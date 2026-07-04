@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import type { CardDefinition } from '../lib/types'
 import { PTCG_SERIES, OPCG_SERIES, PTCG_RARITIES, OPCG_RARITIES } from '../lib/types'
+import { makeCardId } from '../lib/cardId'
 
 type TcgType = 'PTCG' | 'OPCG'
 
@@ -113,7 +114,15 @@ export default function DatabasePage() {
     setError(null)
     setSubmitting(true)
 
+    const id = makeCardId({
+      tcg_type: preview.tcg_type,
+      card_series: preview.card_series,
+      card_index: preview.card_index,
+      card_rarity: preview.card_rarity,
+      url_yuyutei: preview.url_yuyutei,
+    })
     const { error: insertError } = await supabase.from('master_table').insert({
+      id,
       tcg_type: preview.tcg_type,
       card_series: preview.card_series,
       card_index: preview.card_index,
@@ -127,7 +136,7 @@ export default function DatabasePage() {
       setError(insertError.message)
       return
     }
-    setSuccess(`Added "${preview.card_series} ${preview.card_index}" to the master database`)
+    setSuccess(`Added ${id} (${preview.card_series} ${preview.card_index}) to the master database`)
     setStage('saved')
     setPreview(null)
     setUrl('')

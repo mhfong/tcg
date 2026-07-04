@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import type { CardDefinition } from '../lib/types'
@@ -46,6 +46,7 @@ export default function DatabasePage() {
   const [parsing, setParsing] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
@@ -55,6 +56,15 @@ export default function DatabasePage() {
     if (!user) return
     loadCards()
   }, [user])
+
+  // Ref for the delete-confirmation dialog so we can focus it when it opens
+  const confirmDeleteRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (confirmDeleteOpen) {
+      requestAnimationFrame(() => confirmDeleteRef.current?.focus())
+    }
+  }, [confirmDeleteOpen])
 
   async function loadCards() {
     setLoading(true)
@@ -68,14 +78,19 @@ export default function DatabasePage() {
     setLoading(false)
   }
 
-  async function handleDeleteAll() {
+  function openConfirmDelete() {
     if (cards.length === 0) return
-    const count = cards.length
-    const confirmed = window.confirm(
-      `Delete ALL ${count} card${count === 1 ? '' : 's'} from the master database?\n\nThis cannot be undone.`,
-    )
-    if (!confirmed) return
+    setConfirmDeleteOpen(true)
+  }
 
+  function closeConfirmDelete() {
+    if (deleting) return // can't close while in flight
+    setConfirmDeleteOpen(false)
+  }
+
+  async function handleConfirmDelete() {
+    const count = cards.length
+    setConfirmDeleteOpen(false)
     setError(null)
     setSuccess(null)
     setDeleting(true)
@@ -568,11 +583,11 @@ export default function DatabasePage() {
         <button
           type="button"
           className="btn btn-danger"
-          onClick={handleDeleteAll}
-          disabled={deleting || cards.length === 0}
+          onClick={openConfirmDelete}
+          disabled={cards.length === 0}
           title="Delete every card from the master database"
         >
-          {deleting ? 'Deleting…' : 'Delete all'}
+          Delete all
         </button>
       </div>
 
@@ -632,6 +647,130 @@ export default function DatabasePage() {
           </table>
           <div className="table-foot">
             Showing {filtered.length} of {cards.length} most recent cards
+          </div>
+        </div>
+      )}
+
+      {confirmDeleteOpen && (
+        <div
+          ref={confirmDeleteRef}
+          role="dialog"
+          aria-modal="true"
+          tabIndex={-1}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.55)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 100,
+            padding: '1rem',
+            overflow: 'auto',
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeConfirmDelete()
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape' && !deleting) {
+              e.preventDefault()
+              closeConfirmDelete()
+            }
+          }}
+        >
+          <div
+            className="lp-card"
+            style={{
+              maxWidth: 440,
+              width: '100%',
+              margin: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '1rem',
+              borderTop: '4px solid var(--danger)',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.75rem',
+              }}
+            >
+              <div
+                aria-hidden="true"
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 22,
+                  background: 'rgba(212, 120, 120, 0.18)',
+                  color: 'var(--danger)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '1.4rem',
+                  fontWeight: 700,
+                  flexShrink: 0,
+                }}
+              >
+                ⚠
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                <h2
+                  style={{
+                    margin: 0,
+                    fontSize: '1.1rem',
+                    color: 'var(--danger)',
+                  }}
+                >
+                  Delete all cards?
+                </h2>
+                <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                  This is a destructive action
+                </span>
+              </div>
+            </div>
+
+            <div
+              style={{
+                padding: '0.85rem 1rem',
+                borderRadius: 10,
+                background: 'var(--bg-card)',
+                border: '1.5px solid var(--border)',
+                fontSize: '0.9rem',
+                lineHeight: 1.5,
+                color: 'var(--text-primary)',
+              }}
+            >
+              You are about to permanently delete{' '}
+              <strong style={{ color: 'var(--danger)' }}>
+                {cards.length} card{cards.length === 1 ? '' : 's'}
+              </strong>{' '}
+              from the master database. This action{' '}
+              <strong>cannot be undone</strong>.
+            </div>
+
+            {error && <div className="form-alert form-alert--error">{error}</div>}
+
+            <div className="form-actions">
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={closeConfirmDelete}
+                disabled={deleting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger"
+                onClick={handleConfirmDelete}
+                disabled={deleting}
+                autoFocus
+              >
+                {deleting ? 'Deleting…' : `Yes, delete all ${cards.length}`}
+              </button>
+            </div>
           </div>
         </div>
       )}

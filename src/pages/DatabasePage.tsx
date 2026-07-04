@@ -52,6 +52,17 @@ export default function DatabasePage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [filterTcg, setFilterTcg] = useState<'all' | TcgType>('all')
 
+  // Import-from-yuyutei state
+  const [importOpen, setImportOpen] = useState(false)
+  const [importTcg, setImportTcg] = useState<TcgType>('PTCG')
+  const [importSeries, setImportSeries] = useState('')
+  const [importRarities, setImportRarities] = useState<string[]>([])
+  const [availableRarities, setAvailableRarities] = useState<string[]>([])
+  const [importedCards, setImportedCards] = useState<PreviewCard[]>([])
+  const [importing, setImporting] = useState(false)
+  const [importStage, setImportStage] = useState<'select' | 'preview'>('select')
+  const importDialogRef = useRef<HTMLDivElement>(null)
+
   useEffect(() => {
     if (!user) return
     loadCards()
@@ -76,6 +87,154 @@ export default function DatabasePage() {
     if (e) setError(e.message)
     if (data) setCards(data as CardDefinition[])
     setLoading(false)
+  }
+
+  // ---------- Import from yuyu-tei ----------
+
+  function openImport() {
+    setImportOpen(true)
+    setImportStage('select')
+    setImportSeries('')
+    setAvailableRarities([])
+    setImportRarities([])
+    setImportedCards([])
+    setError(null)
+  }
+
+  function closeImport() {
+    if (importing) return
+    setImportOpen(false)
+  }
+
+  async function loadRaritiesForSeries() {
+    if (!importSeries.trim()) {
+      setError('Please enter a series slug (e.g. s12a, op15)')
+      return
+    }
+    setError(null)
+    setImporting(true)
+    try {
+      if (!PARSE_URL) {
+        throw new Error('VITE_YUYUTEI_PARSE_URL is not configured')
+      }
+      const tcg = importTcg === 'PTCG' ? 'poc' : 'opc'
+      const r = await fetch(`${PARSE_URL.replace('/parse', '')}/set-rarities`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tcg, series: importSeries.trim() }),
+      })
+      const data = await r.json()
+      if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`)
+      // Filter out raw "-" placeholder (the OPCG DON section header on
+      // yuyu-tei) — the synthetic "GOLD-DON" entry replaces it for users.
+      const rarities = (data.rarities ?? []).filter(
+        (r: string) => r && r !== '-',
+      )
+      setAvailableRarities(rarities)
+      setImportRarities([]) // reset selection
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+      setAvailableRarities([])
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  async function previewImportedCards() {
+    if (importRarities.length === 0) {
+      setError('Please select at least one rarity')
+      return
+    }
+    setError(null)
+    setImporting(true)
+    setImportedCards([])
+    try {
+      if (!PARSE_URL) {
+        throw new Error('VITE_YUYUTEI_PARSE_URL is not configured')
+      }
+      const tcg = importTcg === 'PTCG' ? 'poc' : 'opc'
+      const collected: PreviewCard[] = []
+      for (const rarity of importRarities) {
+        const r = await fetch(`${PARSE_URL.replace('/parse', '')}/set-cards`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tcg, series: importSeries.trim(), rarity }),
+        })
+        const data = await r.json()
+        if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`)
+        for (const card of data.cards ?? []) {
+          collected.push({
+            tcg_type: importTcg,
+            card_series: importSeries.trim().toLowerCase(),
+            card_index: card.card_index,
+            card_name: card.card_name,
+            card_rarity: rarity,
+            url_yuyutei: card.url_yuyutei,
+            image_url: `https://card.yuyu-tei.jp/${importTcg === 'PTCG' ? 'poc' : 'opc'}/front/${importSeries.trim().toLowerCase()}/${card.url_yuyutei.split('/').pop()}.jpg`,
+          })
+        }
+      }
+      setImportedCards(collected)
+      setImportStage('preview')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  function toggleImportRarity(r: string) {
+    setImportRarities(prev =>
+      prev.includes(r) ? prev.filter(x => x !== r) : [...prev, r],
+    )
+  }
+
+  async function handleImportAll() {
+    if (importedCards.length === 0) return
+    setError(null)
+    setImporting(true)
+    try {
+      const rows = importedCards.map(c => ({
+        id: makeCardId({
+          tcg_type: c.tcg_type,
+          card_series: c.card_series,
+          card_index: c.card_index,
+          card_rarity: c.card_rarity,
+          url_yuyutei: c.url_yuyutei,
+        }),
+        tcg_type: c.tcg_type,
+        card_series: c.card_series,
+        card_index: c.card_index,
+        card_name: c.card_name,
+        card_rarity: c.card_rarity,
+        url_yuyutei: c.url_yuyutei,
+      }))
+      const { error: insertError } = await supabase
+        .from('master_table')
+        .insert(rows)
+      setImporting(false)
+      if (insertError) {
+        const isDuplicate =
+          insertError.code === '23505' ||
+          /duplicate key value/i.test(insertError.message) ||
+          /unique constraint/i.test(insertError.message)
+        if (isDuplicate) {
+          setError('Some of these cards already exist in the database!')
+        } else {
+          setError(insertError.message)
+        }
+        return
+      }
+      const count = importedCards.length
+      setSuccess(
+        `Imported ${count} card${count === 1 ? '' : 's'} from ${importSeries.toUpperCase()}.`,
+      )
+      setImportOpen(false)
+      await loadCards()
+    } catch (e) {
+      setImporting(false)
+      setError(e instanceof Error ? e.message : String(e))
+    }
   }
 
   function openConfirmDelete() {
@@ -250,15 +409,24 @@ export default function DatabasePage() {
             Add new cards to the master list by pasting a yuyu-tei.jp product URL.
           </p>
         </div>
-        <button
-          className="btn btn-primary"
-          onClick={() => {
-            setShowForm(s => !s)
-            startOver()
-          }}
-        >
-          {showForm ? 'Cancel' : '+ Add Card'}
-        </button>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button
+            className="btn btn-ghost"
+            onClick={openImport}
+            title="Bulk-import cards from a yuyu-tei set by series and rarity"
+          >
+            ⤓ Import from yuyu-tei
+          </button>
+          <button
+            className="btn btn-primary"
+            onClick={() => {
+              setShowForm(s => !s)
+              startOver()
+            }}
+          >
+            {showForm ? 'Cancel' : '+ Add Card'}
+          </button>
+        </div>
       </div>
 
       {showForm && (
@@ -783,6 +951,241 @@ export default function DatabasePage() {
                 {deleting ? 'Deleting…' : `Yes, delete all ${cards.length}`}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {importOpen && (
+        <div
+          ref={importDialogRef}
+          role="dialog"
+          aria-modal="true"
+          tabIndex={-1}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.55)',
+            display: 'flex',
+            alignItems: 'flex-start',
+            justifyContent: 'center',
+            zIndex: 100,
+            padding: '1rem',
+            overflow: 'auto',
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape' && !importing) {
+              e.preventDefault()
+              closeImport()
+            }
+          }}
+        >
+          <div
+            className="lp-card"
+            style={{
+              maxWidth: 720,
+              width: '100%',
+              margin: '0 auto',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '1rem',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span
+                className="tag"
+                style={{
+                  background: 'rgba(155, 184, 224, 0.18)',
+                  color: 'var(--accent)',
+                }}
+              >
+                {importStage === 'select' ? 'Step 1' : 'Step 2'}
+              </span>
+              <h2
+                style={{
+                  margin: 0,
+                  fontSize: '1.1rem',
+                  color: 'var(--text-primary)',
+                }}
+              >
+                {importStage === 'select'
+                  ? 'Import cards from yuyu-tei'
+                  : `Review ${importedCards.length} card${importedCards.length === 1 ? '' : 's'}`}
+              </h2>
+            </div>
+
+            {importStage === 'select' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+                <div className="form-field">
+                  <label className="form-label">TCG</label>
+                  <select
+                    className="input"
+                    value={importTcg}
+                    onChange={e => {
+                      setImportTcg(e.target.value as TcgType)
+                      setAvailableRarities([])
+                      setImportRarities([])
+                    }}
+                  >
+                    <option value="PTCG">PTCG (Pokemon)</option>
+                    <option value="OPCG">OPCG (One Piece)</option>
+                  </select>
+                </div>
+                <div className="form-field">
+                  <label className="form-label">Series slug</label>
+                  <input
+                    type="text"
+                    className="input"
+                    placeholder="e.g. s12a, op15, s11a"
+                    value={importSeries}
+                    onChange={e => {
+                      setImportSeries(e.target.value)
+                      setAvailableRarities([])
+                      setImportRarities([])
+                    }}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && !importing) {
+                        e.preventDefault()
+                        loadRaritiesForSeries()
+                      }
+                    }}
+                    autoFocus
+                  />
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.35rem' }}>
+                    The short code from the yuyu-tei URL, e.g. <code>s12a</code> for
+                    {' '}<a href="https://yuyu-tei.jp/sell/poc/s/s12a" target="_blank" rel="noreferrer">/sell/poc/s/s12a</a>.
+                    Press <kbd>Enter</kbd> to load rarities.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={loadRaritiesForSeries}
+                  disabled={importing || !importSeries.trim()}
+                  style={{ alignSelf: 'flex-start' }}
+                >
+                  {importing && availableRarities.length === 0
+                    ? 'Loading…'
+                    : 'Load rarities'}
+                </button>
+
+                {availableRarities.length > 0 && (
+                  <div className="form-field">
+                    <label className="form-label">Select rarities to import</label>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                      {availableRarities.map(r => {
+                        const selected = importRarities.includes(r)
+                        return (
+                          <button
+                            key={r}
+                            type="button"
+                            onClick={() => toggleImportRarity(r)}
+                            style={{
+                              padding: '0.4rem 0.8rem',
+                              borderRadius: 8,
+                              border: selected
+                                ? '2px solid var(--accent)'
+                                : '1.5px solid var(--border)',
+                              background: selected
+                                ? 'rgba(155, 184, 224, 0.18)'
+                                : 'var(--bg-primary)',
+                              color: selected
+                                ? 'var(--accent)'
+                                : 'var(--text-primary)',
+                              fontWeight: 700,
+                              fontSize: '0.8rem',
+                              cursor: 'pointer',
+                              fontFamily: 'inherit',
+                            }}
+                          >
+                            {r}
+                          </button>
+                        )
+                      })}
+                    </div>
+                    {importRarities.length > 0 && (
+                      <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.35rem' }}>
+                        {importRarities.length} rarit{importRarities.length === 1 ? 'y' : 'ies'} selected
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {error && <div className="form-alert form-alert--error">{error}</div>}
+
+                <div className="form-actions">
+                  <button type="button" className="btn btn-ghost" onClick={closeImport} disabled={importing}>
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={previewImportedCards}
+                    disabled={importing || importRarities.length === 0}
+                  >
+                    {importing ? 'Loading cards…' : 'Preview cards →'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {importStage === 'preview' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+                <div
+                  className="lp-card table-card"
+                  style={{ margin: 0, padding: 0, maxHeight: '50vh', overflow: 'auto' }}
+                >
+                  <table className="data-table" style={{ minWidth: 600 }}>
+                    <thead>
+                      <tr>
+                        <th>TCG</th>
+                        <th>Series</th>
+                        <th>Card #</th>
+                        <th>Rarity</th>
+                        <th>Name</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {importedCards.map((c, idx) => (
+                        <tr key={idx}>
+                          <td>
+                            <span className={`tag tag-${c.tcg_type.toLowerCase()}`}>
+                              {c.tcg_type}
+                            </span>
+                          </td>
+                          <td>{c.card_series}</td>
+                          <td>{c.card_index}</td>
+                          <td>{c.card_rarity}</td>
+                          <td>{c.card_name || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {error && <div className="form-alert form-alert--error">{error}</div>}
+
+                <div className="form-actions">
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={() => setImportStage('select')}
+                    disabled={importing}
+                  >
+                    ← Back
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={handleImportAll}
+                    disabled={importing || importedCards.length === 0}
+                  >
+                    {importing
+                      ? 'Importing…'
+                      : `Import ${importedCards.length} card${importedCards.length === 1 ? '' : 's'} to database`}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

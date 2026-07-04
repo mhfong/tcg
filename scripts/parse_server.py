@@ -21,6 +21,7 @@ import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from scraper import parse_yuyutei_card
+from scrape_set import fetch_cards_in_rarity, list_rarities
 
 
 class ParseHandler(BaseHTTPRequestHandler):
@@ -39,42 +40,98 @@ class ParseHandler(BaseHTTPRequestHandler):
     def do_OPTIONS(self) -> None:  # noqa: N802
         self._send_json({}, 204)
 
-    def do_POST(self) -> None:  # noqa: N802
-        if self.path != "/parse":
-            self._send_json({"error": "Not found. Use POST /parse"}, 404)
-            return
-
+    def _read_json_body(self):
         length = int(self.headers.get("Content-Length", "0") or "0")
         try:
             raw = self.rfile.read(length) if length > 0 else b"{}"
             body = json.loads(raw.decode("utf-8"))
         except (ValueError, UnicodeDecodeError) as e:
-            self._send_json({"error": f"Invalid JSON body: {e}"}, 400)
+            return None, f"Invalid JSON body: {e}"
+        return body, None
+
+    def do_POST(self) -> None:  # noqa: N802
+        if self.path == "/parse":
+            body, err = self._read_json_body()
+            if err:
+                self._send_json({"error": err}, 400)
+                return
+            url = (body.get("url") or "").strip()
+            if not url:
+                self._send_json({"error": "Missing 'url' field"}, 400)
+                return
+            print(f"[parse] {url}", flush=True)
+            try:
+                card = parse_yuyutei_card(url)
+            except Exception as e:
+                self._send_json({"error": str(e)}, 500)
+                return
+            if "error" in card:
+                self._send_json(card, 400)
+                return
+            self._send_json(card, 200)
             return
 
-        url = (body.get("url") or "").strip()
-        if not url:
-            self._send_json({"error": "Missing 'url' field"}, 400)
+        if self.path == "/set-rarities":
+            body, err = self._read_json_body()
+            if err:
+                self._send_json({"error": err}, 400)
+                return
+            tcg = (body.get("tcg") or "").strip()
+            series = (body.get("series") or "").strip()
+            if not tcg or not series:
+                self._send_json(
+                    {"error": "Missing 'tcg' or 'series' field"}, 400
+                )
+                return
+            print(f"[rarities] {tcg} {series}", flush=True)
+            try:
+                rarities = list_rarities(tcg, series)
+            except Exception as e:
+                self._send_json({"error": str(e)}, 500)
+                return
+            self._send_json(
+                {"tcg": tcg, "series": series, "rarities": rarities}, 200
+            )
             return
 
-        print(f"[parse] {url}", flush=True)
-        try:
-            card = parse_yuyutei_card(url)
-        except Exception as e:
-            self._send_json({"error": str(e)}, 500)
+        if self.path == "/set-cards":
+            body, err = self._read_json_body()
+            if err:
+                self._send_json({"error": err}, 400)
+                return
+            tcg = (body.get("tcg") or "").strip()
+            series = (body.get("series") or "").strip()
+            rarity = (body.get("rarity") or "").strip()
+            if not tcg or not series or not rarity:
+                self._send_json(
+                    {"error": "Missing 'tcg', 'series', or 'rarity' field"}, 400
+                )
+                return
+            print(f"[cards] {tcg} {series} {rarity}", flush=True)
+            try:
+                cards = fetch_cards_in_rarity(tcg, series, rarity)
+            except Exception as e:
+                self._send_json({"error": str(e)}, 500)
+                return
+            self._send_json(
+                {
+                    "tcg": tcg,
+                    "series": series,
+                    "rarity": rarity,
+                    "cards": cards,
+                },
+                200,
+            )
             return
 
-        if "error" in card:
-            self._send_json(card, 400)
-            return
-        self._send_json(card, 200)
+        self._send_json({"error": "Not found. Use POST /parse, /set-rarities, or /set-cards"}, 404)
 
     def do_GET(self) -> None:  # noqa: N802
         # Tiny health-check so you can curl the server from terminal
         if self.path in ("/", "/health"):
             self._send_json({"ok": True, "service": "yuyutei-parse-proxy"}, 200)
             return
-        self._send_json({"error": "Use POST /parse"}, 405)
+        self._send_json({"error": "Use POST /parse, /set-rarities, or /set-cards"}, 405)
 
     def log_message(self, fmt: str, *args) -> None:
         # Quieter default access log

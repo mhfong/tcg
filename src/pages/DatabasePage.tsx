@@ -17,7 +17,7 @@ interface PreviewCard {
   image_url: string
 }
 
-type Stage = 'input' | 'preview' | 'confirm' | 'success'
+type Stage = 'input' | 'preview'
 
 function isValidYuyuteiUrl(url: string): boolean {
   if (!url) return false
@@ -111,21 +111,15 @@ export default function DatabasePage() {
     }
   }
 
-  function addToBatchAndFetchAnother() {
+  function addToBatch() {
     if (!preview) return
+    setError(null)
+    // Add the current edit to the batch and return to the input form.
+    // The batch preview table is shown inline at the bottom of the form.
     setBatch(prev => [...prev, preview])
     setPreview(null)
     setUrl('')
     setStage('input')
-  }
-
-  function goToBatchPreview() {
-    if (!preview) return
-    setError(null)
-    // Add the current edit to the batch (without clearing it), then show modal
-    setBatch(prev => [...prev, preview])
-    setPreview(null)
-    setStage('confirm')
   }
 
   function removeFromBatch(idx: number) {
@@ -164,7 +158,7 @@ export default function DatabasePage() {
     setSuccess(
       `Added ${count} card${count === 1 ? '' : 's'} to the master database.`,
     )
-    setStage('success')
+    setBatch([])
     await loadCards()
   }
 
@@ -214,6 +208,7 @@ export default function DatabasePage() {
       </div>
 
       {showForm && (
+        <>
         <div className="lp-card" style={{ marginBottom: '1rem' }}>
           {stage === 'input' && (
             <form
@@ -261,7 +256,7 @@ export default function DatabasePage() {
           {stage === 'preview' && preview && (
             <form
               style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}
-              onSubmit={(e) => { e.preventDefault(); goToBatchPreview() }}
+              onSubmit={(e) => { e.preventDefault(); addToBatch() }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <span className="tag tag-ptcg" style={{ background: 'rgba(124,184,140,0.18)', color: 'var(--success)' }}>
@@ -358,296 +353,173 @@ export default function DatabasePage() {
                 <button type="button" className="btn btn-ghost" onClick={startOver}>
                   ← Cancel
                 </button>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  <button
-                    type="button"
-                    className="btn btn-ghost"
-                    disabled={!preview.card_series || !preview.card_index || !preview.card_rarity}
-                    onClick={addToBatchAndFetchAnother}
-                  >
-                    + Add another
-                  </button>
-                  <button
-                    type="submit"
-                    className="btn btn-primary"
-                    disabled={!preview.card_series || !preview.card_index || !preview.card_rarity}
-                  >
-                    Preview Batch →
-                  </button>
-                </div>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={!preview.card_series || !preview.card_index || !preview.card_rarity}
+                >
+                  + Add to Batch
+                </button>
               </div>
             </form>
           )}
-
-          {stage === 'confirm' && (
-            <div
-              role="dialog"
-              aria-modal="true"
-              style={{
-                position: 'fixed',
-                inset: 0,
-                background: 'rgba(0, 0, 0, 0.55)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                zIndex: 100,
-                padding: '1rem',
-                overflow: 'auto',
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !submitting && batch.length > 0) {
-                  e.preventDefault()
-                  handleAddToDb()
-                }
-                if (e.key === 'Escape') {
-                  e.preventDefault()
-                  // Take the last card out of the batch and send it back to edit
-                  if (batch.length > 0) {
-                    const last = batch[batch.length - 1]
-                    setPreview(last)
-                    setBatch(prev => prev.slice(0, -1))
-                    setStage('preview')
-                  } else {
-                    setStage('input')
-                  }
-                }
-              }}
-            >
-              <div
-                className="lp-card"
-                style={{
-                  maxWidth: 960,
-                  width: '100%',
-                  margin: '0 auto',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '1rem',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                  <span
-                    className="tag"
-                    style={{
-                      background: 'rgba(155, 184, 224, 0.18)',
-                      color: 'var(--accent)',
-                    }}
-                  >
-                    Preview batch
-                  </span>
-                  <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                    {batch.length} card{batch.length === 1 ? '' : 's'} ready to add. Press <kbd>Enter</kbd> to confirm.
-                  </span>
-                </div>
-
-                {batch.length === 0 ? (
-                  <div
-                    style={{
-                      padding: '1.25rem',
-                      borderRadius: 10,
-                      background: 'var(--bg-card)',
-                      border: '1.5px dashed var(--border)',
-                      textAlign: 'center',
-                      color: 'var(--text-secondary)',
-                      fontSize: '0.85rem',
-                    }}
-                  >
-                    No cards in the batch yet. Add at least one card before confirming.
-                  </div>
-                ) : (
-                  <div
-                    className="lp-card table-card"
-                    style={{
-                      margin: 0,
-                      maxHeight: 'min(60vh, 480px)',
-                      overflow: 'auto',
-                    }}
-                  >
-                    <table className="data-table" style={{ minWidth: 720 }}>
-                      <thead>
-                        <tr>
-                          <th>TCG</th>
-                          <th>Series</th>
-                          <th>Card #</th>
-                          <th>Rarity</th>
-                          <th>Name</th>
-                          <th>Generated ID</th>
-                          <th style={{ width: 50 }}></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {batch.map((c, idx) => {
-                          const id = makeCardId({
-                            tcg_type: c.tcg_type,
-                            card_series: c.card_series,
-                            card_index: c.card_index,
-                            card_rarity: c.card_rarity,
-                            url_yuyutei: c.url_yuyutei,
-                          })
-                          return (
-                            <tr key={idx}>
-                              <td>
-                                <span className={`tag tag-${c.tcg_type.toLowerCase()}`}>
-                                  {c.tcg_type}
-                                </span>
-                              </td>
-                              <td>{c.card_series}</td>
-                              <td>{c.card_index}</td>
-                              <td>{c.card_rarity}</td>
-                              <td>{c.card_name || '—'}</td>
-                              <td>
-                                <code
-                                  style={{
-                                    fontSize: '0.72rem',
-                                    padding: '0.15rem 0.4rem',
-                                    borderRadius: 4,
-                                    background: 'var(--bg-primary)',
-                                    border: '1px solid var(--border)',
-                                    wordBreak: 'break-all',
-                                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-                                  }}
-                                >
-                                  {id}
-                                </code>
-                              </td>
-                              <td>
-                                <button
-                                  type="button"
-                                  aria-label="Remove from batch"
-                                  title="Remove from batch"
-                                  onClick={() => removeFromBatch(idx)}
-                                  style={{
-                                    background: 'transparent',
-                                    border: 'none',
-                                    color: 'var(--text-secondary)',
-                                    cursor: 'pointer',
-                                    fontSize: '1rem',
-                                    padding: '0.25rem 0.4rem',
-                                    lineHeight: 1,
-                                  }}
-                                >
-                                  ✕
-                                </button>
-                              </td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-
-                {error && <div className="form-alert form-alert--error">{error}</div>}
-
-                <div className="form-actions">
-                  <button
-                    type="button"
-                    className="btn btn-ghost"
-                    onClick={() => {
-                      // Pull the last card out of the batch and return to edit
-                      if (batch.length > 0) {
-                        const last = batch[batch.length - 1]
-                        setPreview(last)
-                        setBatch(prev => prev.slice(0, -1))
-                        setStage('preview')
-                      } else {
-                        setStage('input')
-                      }
-                    }}
-                  >
-                    ← Edit last
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    disabled={submitting || batch.length === 0}
-                    onClick={handleAddToDb}
-                    autoFocus
-                  >
-                    {submitting
-                      ? 'Saving…'
-                      : `Add ${batch.length} card${batch.length === 1 ? '' : 's'} to database (Enter)`}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {stage === 'success' && success && (
-            <div
-              role="dialog"
-              aria-modal="true"
-              style={{
-                position: 'fixed',
-                inset: 0,
-                background: 'rgba(0, 0, 0, 0.55)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                zIndex: 100,
-                padding: '1rem',
-                overflow: 'auto',
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                  startOver()
-                }
-              }}
-            >
-              <div
-                className="lp-card"
-                style={{
-                  maxWidth: 480,
-                  width: '100%',
-                  margin: 0,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '1rem',
-                  textAlign: 'center',
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: '2.5rem',
-                    color: 'var(--success)',
-                    lineHeight: 1,
-                  }}
-                >
-                  ✓
-                </div>
-                <h2
-                  style={{
-                    margin: 0,
-                    fontSize: '1.15rem',
-                    color: 'var(--text-primary)',
-                  }}
-                >
-                  Card added to database
-                </h2>
-                <div className="form-alert form-alert--success" style={{ gridColumn: 'auto' }}>
-                  {success}
-                </div>
-                <div className="form-actions">
-                  <button
-                    type="button"
-                    className="btn btn-ghost"
-                    onClick={() => setShowForm(false)}
-                  >
-                    Done
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    onClick={startOver}
-                    autoFocus
-                  >
-                    + Add another (Enter)
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
+
+        {success && (
+          <div
+            className="form-alert form-alert--success"
+            style={{
+              marginBottom: '1rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+            }}
+          >
+            <span style={{ fontSize: '1.1rem' }}>✓</span>
+            <span style={{ flex: 1 }}>{success}</span>
+            <button
+              type="button"
+              onClick={() => setSuccess(null)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--text-secondary)',
+                cursor: 'pointer',
+                fontSize: '0.9rem',
+                padding: '0.1rem 0.4rem',
+              }}
+              aria-label="Dismiss"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
+        {batch.length > 0 && (
+          <div
+            className="lp-card"
+            style={{ marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.875rem' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <span
+                className="tag"
+                style={{
+                  background: 'rgba(155, 184, 224, 0.18)',
+                  color: 'var(--accent)',
+                }}
+              >
+                Batch preview
+              </span>
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                {batch.length} card{batch.length === 1 ? '' : 's'} ready to add. Review below.
+              </span>
+            </div>
+
+            <div
+              className="lp-card table-card"
+              style={{
+                margin: 0,
+                padding: 0,
+                overflow: 'auto',
+              }}
+            >
+              <table className="data-table" style={{ minWidth: 720 }}>
+                <thead>
+                  <tr>
+                    <th>TCG</th>
+                    <th>Series</th>
+                    <th>Card #</th>
+                    <th>Rarity</th>
+                    <th>Name</th>
+                    <th>Generated ID</th>
+                    <th style={{ width: 50 }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {batch.map((c, idx) => {
+                    const id = makeCardId({
+                      tcg_type: c.tcg_type,
+                      card_series: c.card_series,
+                      card_index: c.card_index,
+                      card_rarity: c.card_rarity,
+                      url_yuyutei: c.url_yuyutei,
+                    })
+                    return (
+                      <tr key={idx}>
+                        <td>
+                          <span className={`tag tag-${c.tcg_type.toLowerCase()}`}>
+                            {c.tcg_type}
+                          </span>
+                        </td>
+                        <td>{c.card_series}</td>
+                        <td>{c.card_index}</td>
+                        <td>{c.card_rarity}</td>
+                        <td>{c.card_name || '—'}</td>
+                        <td>
+                          <code
+                            style={{
+                              fontSize: '0.72rem',
+                              padding: '0.15rem 0.4rem',
+                              borderRadius: 4,
+                              background: 'var(--bg-primary)',
+                              border: '1px solid var(--border)',
+                              wordBreak: 'break-all',
+                              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                            }}
+                          >
+                            {id}
+                          </code>
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            aria-label="Remove from batch"
+                            title="Remove from batch"
+                            onClick={() => removeFromBatch(idx)}
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              color: 'var(--text-secondary)',
+                              cursor: 'pointer',
+                              fontSize: '1rem',
+                              padding: '0.25rem 0.4rem',
+                              lineHeight: 1,
+                            }}
+                          >
+                            ✕
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {error && <div className="form-alert form-alert--error">{error}</div>}
+
+            <div className="form-actions">
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => setBatch([])}
+              >
+                Clear batch
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={submitting || batch.length === 0}
+                onClick={handleAddToDb}
+              >
+                {submitting
+                  ? 'Saving…'
+                  : `Add ${batch.length} card${batch.length === 1 ? '' : 's'} to database`}
+              </button>
+            </div>
+          </div>
+        )}
+        </>
       )}
 
       <div className="toolbar">

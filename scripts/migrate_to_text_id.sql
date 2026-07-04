@@ -71,11 +71,27 @@ CREATE TABLE IF NOT EXISTS transactions (
 );
 GRANT SELECT, INSERT, UPDATE, DELETE ON transactions TO authenticated;
 
--- Master table: readable by all authenticated users
+-- Master table: readable and writable by all authenticated users
 ALTER TABLE master_table ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Master table is viewable by authenticated users"
   ON master_table FOR SELECT
+  TO authenticated
+  USING (true);
+
+CREATE POLICY "Authenticated users can insert cards"
+  ON master_table FOR INSERT
+  TO authenticated
+  WITH CHECK (true);
+
+CREATE POLICY "Authenticated users can update cards"
+  ON master_table FOR UPDATE
+  TO authenticated
+  USING (true)
+  WITH CHECK (true);
+
+CREATE POLICY "Authenticated users can delete cards"
+  ON master_table FOR DELETE
   TO authenticated
   USING (true);
 

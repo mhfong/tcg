@@ -13,6 +13,12 @@ Then point your frontend at:
 
 POST /parse  body: {"url": "https://yuyu-tei.jp/..."}
        → returns the parsed card JSON, or {"error": "..."}
+
+POST /set-rarities  body: {"series": "s12a"} (tcg auto-detected)
+       → returns {tcg, series, rarities}
+
+POST /set-cards  body: {"series": "s12a", "rarity": "UR"} (tcg auto-detected)
+       → returns {tcg, series, rarity, cards}
 """
 
 import argparse
@@ -21,7 +27,12 @@ import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from scraper import parse_yuyutei_card
-from scrape_set import fetch_cards_in_rarity, list_rarities
+from scrape_set import (
+    fetch_cards_in_rarity,
+    fetch_cards_in_rarity_for_series,
+    list_rarities,
+    list_rarities_for_series,
+)
 
 
 class ParseHandler(BaseHTTPRequestHandler):
@@ -76,22 +87,24 @@ class ParseHandler(BaseHTTPRequestHandler):
             if err:
                 self._send_json({"error": err}, 400)
                 return
-            tcg = (body.get("tcg") or "").strip()
+            tcg = (body.get("tcg") or "").strip().lower() or None
             series = (body.get("series") or "").strip()
-            if not tcg or not series:
+            if not series:
                 self._send_json(
-                    {"error": "Missing 'tcg' or 'series' field"}, 400
+                    {"error": "Missing 'series' field"}, 400
                 )
                 return
-            print(f"[rarities] {tcg} {series}", flush=True)
+            print(f"[rarities] tcg={tcg} series={series}", flush=True)
             try:
-                rarities = list_rarities(tcg, series)
+                if tcg:
+                    rarities = list_rarities(tcg, series)
+                    result = {"tcg": tcg, "series": series, "rarities": rarities}
+                else:
+                    result = list_rarities_for_series(series)
             except Exception as e:
                 self._send_json({"error": str(e)}, 500)
                 return
-            self._send_json(
-                {"tcg": tcg, "series": series, "rarities": rarities}, 200
-            )
+            self._send_json(result, 200)
             return
 
         if self.path == "/set-cards":
@@ -99,29 +112,32 @@ class ParseHandler(BaseHTTPRequestHandler):
             if err:
                 self._send_json({"error": err}, 400)
                 return
-            tcg = (body.get("tcg") or "").strip()
+            tcg = (body.get("tcg") or "").strip().lower() or None
             series = (body.get("series") or "").strip()
             rarity = (body.get("rarity") or "").strip()
-            if not tcg or not series or not rarity:
+            if not series or not rarity:
                 self._send_json(
-                    {"error": "Missing 'tcg', 'series', or 'rarity' field"}, 400
+                    {"error": "Missing 'series' or 'rarity' field"}, 400
                 )
                 return
-            print(f"[cards] {tcg} {series} {rarity}", flush=True)
+            print(f"[cards] tcg={tcg} series={series} rarity={rarity}", flush=True)
             try:
-                cards = fetch_cards_in_rarity(tcg, series, rarity)
+                if tcg:
+                    cards = fetch_cards_in_rarity(tcg, series, rarity)
+                    result = {
+                        "tcg": tcg,
+                        "series": series,
+                        "rarity": rarity,
+                        "cards": cards,
+                    }
+                else:
+                    result = fetch_cards_in_rarity_for_series(
+                        series, rarity
+                    )
             except Exception as e:
                 self._send_json({"error": str(e)}, 500)
                 return
-            self._send_json(
-                {
-                    "tcg": tcg,
-                    "series": series,
-                    "rarity": rarity,
-                    "cards": cards,
-                },
-                200,
-            )
+            self._send_json(result, 200)
             return
 
         self._send_json({"error": "Not found. Use POST /parse, /set-rarities, or /set-cards"}, 404)

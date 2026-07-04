@@ -25,6 +25,14 @@ YUYUTEI_TCG_CODES = {
     "opc": "OPCG",
 }
 
+# Slug-prefix heuristic used as a fast first guess when auto-detecting the
+# TCG from a series slug alone. Real disambiguation is done by inspecting
+# the actual page content (see resolve_tcg_for_series).
+_TCG_BY_PREFIX = [
+    ("op", "opc"),
+    ("s", "poc"),
+]
+
 # Section header pattern: e.g. <span ...>UR</span> Card List or
 # <span ...>P-SEC</span> Card List (parallel rarities on OPCG) or
 # <span>-</span> Card List (the OPCG "don" section for ドン!!カード)
@@ -65,6 +73,65 @@ def fetch_set_page(tcg_code: str, series: str) -> str:
         return r.text
 
 
+def _guess_tcg_by_prefix(series: str) -> Optional[str]:
+    """
+    Best-guess TCG code from the series slug prefix. Returns 'opc', 'poc',
+    or None if no known prefix matches.
+    """
+    s = (series or "").lower()
+    for prefix, tcg in _TCG_BY_PREFIX:
+        if s.startswith(prefix):
+            return tcg
+    return None
+
+
+def resolve_tcg_for_series(series: str, hint: Optional[str] = None) -> tuple:
+    """
+    Determine which yuyu-tei TCG path ('poc' or 'opc') actually has content
+    for the given series slug. Returns (tcg_code, html).
+
+    Strategy:
+      1. If `hint` is given ('poc' or 'opc'), try it first. If the page has
+         any SECTION_HEADER_RE matches, accept it.
+      2. Otherwise, use the slug-prefix heuristic to pick a first guess.
+      3. Always verify by also fetching the other TCG path; pick whichever
+         has the most section headers (real content beats a sidebar).
+      4. Fall back to the first guess if neither has content.
+    """
+    series = (series or "").lower()
+    if not series:
+        raise ValueError("series is required")
+
+    order: list[str] = []
+    seen: set[str] = set()
+    for candidate in (hint, _guess_tcg_by_prefix(series), "poc", "opc"):
+        c = (candidate or "").lower()
+        if c in ("poc", "opc") and c not in seen:
+            order.append(c)
+            seen.add(c)
+
+    candidates: list[tuple] = []
+    for tcg in order:
+        try:
+            html = fetch_set_page(tcg, series)
+        except Exception as e:
+            print(f"[resolve_tcg] fetch {tcg}/{series} failed: {e}", file=sys.stderr)
+            continue
+        n = len(list(SECTION_HEADER_RE.finditer(html)))
+        candidates.append((tcg, html, n))
+
+    if not candidates:
+        # Last resort: just use the prefix guess and raise on fetch
+        tcg = _guess_tcg_by_prefix(series) or "poc"
+        return tcg, fetch_set_page(tcg, series)
+
+    # Pick the one with the most section headers; ties go to the first guess
+    # order.
+    candidates.sort(key=lambda c: -c[2])
+    best_tcg, best_html, _ = candidates[0]
+    return best_tcg, best_html
+
+
 def list_rarities(tcg_code: str, series: str) -> list[str]:
     """
     Return the available rarity codes (in page order) for a set.
@@ -86,6 +153,43 @@ def list_rarities(tcg_code: str, series: str) -> list[str]:
     ):
         rarities.append("GOLD-DON")
     return rarities
+
+
+def list_rarities_for_series(series: str, hint: Optional[str] = None) -> dict:
+    """
+    Auto-detect TCG and return rarities for the given series.
+
+    Returns {"tcg": "poc"|"opc", "series": "...", "rarities": [...]} where
+    rarities may include the synthetic "GOLD-DON" entry for OPCG sets that
+    have a real super-parallel ドン!! section.
+    """
+    tcg, html = resolve_tcg_for_series(series, hint=hint)
+    rarities = list({m.group(1).upper() for m in SECTION_HEADER_RE.finditer(html)})
+    if (
+        tcg == "opc"
+        and any(r == "-" for r in rarities)
+        and _has_real_gold_don(html)
+    ):
+        rarities.append("GOLD-DON")
+    return {"tcg": tcg, "series": series.lower(), "rarities": rarities}
+
+
+def fetch_cards_in_rarity_for_series(
+    series: str, rarity: str, hint: Optional[str] = None
+) -> dict:
+    """
+    Auto-detect TCG and return cards for the given series + rarity.
+
+    Returns {"tcg": ..., "series": ..., "rarity": ..., "cards": [...]}.
+    """
+    tcg, _ = resolve_tcg_for_series(series, hint=hint)
+    cards = fetch_cards_in_rarity(tcg, series, rarity)
+    return {
+        "tcg": tcg,
+        "series": series.lower(),
+        "rarity": rarity,
+        "cards": cards,
+    }
 
 
 def _has_real_gold_don(html: str) -> bool:

@@ -54,7 +54,9 @@ export default function DatabasePage() {
 
   // Import-from-yuyutei state
   const [importOpen, setImportOpen] = useState(false)
-  const [importTcg, setImportTcg] = useState<TcgType>('PTCG')
+  // The detected TCG ('PTCG' or 'OPCG') for the currently loaded series.
+  // Set automatically by the /set-rarities response (no longer user input).
+  const [detectedTcg, setDetectedTcg] = useState<TcgType | null>(null)
   const [importSeries, setImportSeries] = useState('')
   const [importRarities, setImportRarities] = useState<string[]>([])
   const [availableRarities, setAvailableRarities] = useState<string[]>([])
@@ -95,6 +97,7 @@ export default function DatabasePage() {
     setImportOpen(true)
     setImportStage('select')
     setImportSeries('')
+    setDetectedTcg(null)
     setAvailableRarities([])
     setImportRarities([])
     setImportedCards([])
@@ -117,11 +120,12 @@ export default function DatabasePage() {
       if (!PARSE_URL) {
         throw new Error('VITE_YUYUTEI_PARSE_URL is not configured')
       }
-      const tcg = importTcg === 'PTCG' ? 'poc' : 'opc'
+      // The backend auto-detects the TCG from the series slug; we just
+      // pass the series and learn the TCG from the response.
       const r = await fetch(`${PARSE_URL.replace('/parse', '')}/set-rarities`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tcg, series: importSeries.trim() }),
+        body: JSON.stringify({ series: importSeries.trim() }),
       })
       const data = await r.json()
       if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`)
@@ -130,11 +134,14 @@ export default function DatabasePage() {
       const rarities = (data.rarities ?? []).filter(
         (r: string) => r && r !== '-',
       )
+      const tcg: TcgType = data.tcg === 'opc' ? 'OPCG' : 'PTCG'
+      setDetectedTcg(tcg)
       setAvailableRarities(rarities)
       setImportRarities([]) // reset selection
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
       setAvailableRarities([])
+      setDetectedTcg(null)
     } finally {
       setImporting(false)
     }
@@ -145,6 +152,10 @@ export default function DatabasePage() {
       setError('Please select at least one rarity')
       return
     }
+    if (!detectedTcg) {
+      setError('Please load rarities first')
+      return
+    }
     setError(null)
     setImporting(true)
     setImportedCards([])
@@ -152,25 +163,25 @@ export default function DatabasePage() {
       if (!PARSE_URL) {
         throw new Error('VITE_YUYUTEI_PARSE_URL is not configured')
       }
-      const tcg = importTcg === 'PTCG' ? 'poc' : 'opc'
+      const tcg = detectedTcg
       const collected: PreviewCard[] = []
       for (const rarity of importRarities) {
         const r = await fetch(`${PARSE_URL.replace('/parse', '')}/set-cards`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tcg, series: importSeries.trim(), rarity }),
+          body: JSON.stringify({ series: importSeries.trim(), rarity }),
         })
         const data = await r.json()
         if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`)
         for (const card of data.cards ?? []) {
           collected.push({
-            tcg_type: importTcg,
+            tcg_type: tcg,
             card_series: importSeries.trim().toLowerCase(),
             card_index: card.card_index,
             card_name: card.card_name,
             card_rarity: rarity,
             url_yuyutei: card.url_yuyutei,
-            image_url: `https://card.yuyu-tei.jp/${importTcg === 'PTCG' ? 'poc' : 'opc'}/front/${importSeries.trim().toLowerCase()}/${card.url_yuyutei.split('/').pop()}.jpg`,
+            image_url: `https://card.yuyu-tei.jp/${tcg === 'PTCG' ? 'poc' : 'opc'}/front/${importSeries.trim().toLowerCase()}/${card.url_yuyutei.split('/').pop()}.jpg`,
           })
         }
       }
@@ -1016,21 +1027,6 @@ export default function DatabasePage() {
             {importStage === 'select' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
                 <div className="form-field">
-                  <label className="form-label">TCG</label>
-                  <select
-                    className="input"
-                    value={importTcg}
-                    onChange={e => {
-                      setImportTcg(e.target.value as TcgType)
-                      setAvailableRarities([])
-                      setImportRarities([])
-                    }}
-                  >
-                    <option value="PTCG">PTCG (Pokemon)</option>
-                    <option value="OPCG">OPCG (One Piece)</option>
-                  </select>
-                </div>
-                <div className="form-field">
                   <label className="form-label">Series slug</label>
                   <input
                     type="text"
@@ -1041,6 +1037,7 @@ export default function DatabasePage() {
                       setImportSeries(e.target.value)
                       setAvailableRarities([])
                       setImportRarities([])
+                      setDetectedTcg(null)
                     }}
                     onKeyDown={e => {
                       if (e.key === 'Enter' && !importing) {
@@ -1053,7 +1050,7 @@ export default function DatabasePage() {
                   <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.35rem' }}>
                     The short code from the yuyu-tei URL, e.g. <code>s12a</code> for
                     {' '}<a href="https://yuyu-tei.jp/sell/poc/s/s12a" target="_blank" rel="noreferrer">/sell/poc/s/s12a</a>.
-                    Press <kbd>Enter</kbd> to load rarities.
+                    The TCG is auto-detected from the slug. Press <kbd>Enter</kbd> to load rarities.
                   </p>
                 </div>
                 <button
@@ -1070,7 +1067,29 @@ export default function DatabasePage() {
 
                 {availableRarities.length > 0 && (
                   <div className="form-field">
-                    <label className="form-label">Select rarities to import</label>
+                    <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span>Select rarities to import</span>
+                      {detectedTcg && (
+                        <span
+                          style={{
+                            fontSize: '0.7rem',
+                            fontWeight: 700,
+                            padding: '0.15rem 0.5rem',
+                            borderRadius: 6,
+                            background: detectedTcg === 'OPCG'
+                              ? 'rgba(232, 134, 74, 0.18)'
+                              : 'rgba(155, 184, 224, 0.18)',
+                            color: detectedTcg === 'OPCG'
+                              ? 'rgb(232, 134, 74)'
+                              : 'var(--accent)',
+                            border: `1px solid ${detectedTcg === 'OPCG' ? 'rgba(232, 134, 74, 0.4)' : 'var(--accent)'}`,
+                          }}
+                          title="Auto-detected from the series slug"
+                        >
+                          {detectedTcg}
+                        </span>
+                      )}
+                    </label>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
                       {availableRarities.map(r => {
                         const selected = importRarities.includes(r)

@@ -57,6 +57,11 @@ export default function DatabasePage() {
   // The detected TCG ('PTCG' or 'OPCG') for the currently loaded series.
   // Set automatically by the /set-rarities response (no longer user input).
   const [detectedTcg, setDetectedTcg] = useState<TcgType | null>(null)
+  // The series slug as resolved by the backend. May differ from the user's
+  // input if the slug was zero-padded (e.g. 'sv2a' -> 'sv02a'). All
+  // downstream requests, image URLs, and the success message should use
+  // this value rather than the original importSeries string.
+  const [resolvedSeries, setResolvedSeries] = useState<string>('')
   const [importSeries, setImportSeries] = useState('')
   const [importRarities, setImportRarities] = useState<string[]>([])
   const [availableRarities, setAvailableRarities] = useState<string[]>([])
@@ -97,6 +102,7 @@ export default function DatabasePage() {
     setImportOpen(true)
     setImportStage('select')
     setImportSeries('')
+    setResolvedSeries('')
     setDetectedTcg(null)
     setAvailableRarities([])
     setImportRarities([])
@@ -136,12 +142,17 @@ export default function DatabasePage() {
       )
       const tcg: TcgType = data.tcg === 'opc' ? 'OPCG' : 'PTCG'
       setDetectedTcg(tcg)
+      // The backend may have zero-padded a single-digit run (e.g. sv2a
+      // -> sv02a). Persist the slug it actually used so subsequent
+      // /set-cards calls and image URLs match the real page.
+      setResolvedSeries((data.series ?? importSeries.trim()).toLowerCase())
       setAvailableRarities(rarities)
       setImportRarities([]) // reset selection
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
       setAvailableRarities([])
       setDetectedTcg(null)
+      setResolvedSeries('')
     } finally {
       setImporting(false)
     }
@@ -164,24 +175,26 @@ export default function DatabasePage() {
         throw new Error('VITE_YUYUTEI_PARSE_URL is not configured')
       }
       const tcg = detectedTcg
+      // Use the resolved (possibly padded) series for everything below.
+      const seriesSlug = resolvedSeries || importSeries.trim().toLowerCase()
       const collected: PreviewCard[] = []
       for (const rarity of importRarities) {
         const r = await fetch(`${PARSE_URL.replace('/parse', '')}/set-cards`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ series: importSeries.trim(), rarity }),
+          body: JSON.stringify({ series: seriesSlug, rarity }),
         })
         const data = await r.json()
         if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`)
         for (const card of data.cards ?? []) {
           collected.push({
             tcg_type: tcg,
-            card_series: importSeries.trim().toLowerCase(),
+            card_series: seriesSlug,
             card_index: card.card_index,
             card_name: card.card_name,
             card_rarity: rarity,
             url_yuyutei: card.url_yuyutei,
-            image_url: `https://card.yuyu-tei.jp/${tcg === 'PTCG' ? 'poc' : 'opc'}/front/${importSeries.trim().toLowerCase()}/${card.url_yuyutei.split('/').pop()}.jpg`,
+            image_url: `https://card.yuyu-tei.jp/${tcg === 'PTCG' ? 'poc' : 'opc'}/front/${seriesSlug}/${card.url_yuyutei.split('/').pop()}.jpg`,
           })
         }
       }
@@ -238,7 +251,7 @@ export default function DatabasePage() {
       }
       const count = importedCards.length
       setSuccess(
-        `Imported ${count} card${count === 1 ? '' : 's'} from ${importSeries.toUpperCase()}.`,
+        `Imported ${count} card${count === 1 ? '' : 's'} from ${(resolvedSeries || importSeries).toUpperCase()}.`,
       )
       setImportOpen(false)
       await loadCards()
@@ -1038,6 +1051,7 @@ export default function DatabasePage() {
                       setAvailableRarities([])
                       setImportRarities([])
                       setDetectedTcg(null)
+                      setResolvedSeries('')
                     }}
                     onKeyDown={e => {
                       if (e.key === 'Enter' && !importing) {
@@ -1050,7 +1064,9 @@ export default function DatabasePage() {
                   <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.35rem' }}>
                     The short code from the yuyu-tei URL, e.g. <code>s12a</code> for
                     {' '}<a href="https://yuyu-tei.jp/sell/poc/s/s12a" target="_blank" rel="noreferrer">/sell/poc/s/s12a</a>.
-                    The TCG is auto-detected from the slug. Press <kbd>Enter</kbd> to load rarities.
+                    The TCG is auto-detected from the slug. Single-digit series
+                    like <code>sv2a</code> are auto-padded to <code>sv02a</code>.
+                    Press <kbd>Enter</kbd> to load rarities.
                   </p>
                 </div>
                 <button

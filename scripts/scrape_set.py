@@ -85,18 +85,45 @@ def _guess_tcg_by_prefix(series: str) -> Optional[str]:
     return None
 
 
+# Find a run of exactly one digit inside a slug. Returns (start, end) of
+# the run or None. Used to detect unpadded numbers like 'sv2a' which
+# yuyu-tei stores as 'sv02a'.
+_SINGLE_DIGIT_RUN_RE = re.compile(r'(?<!\d)(\d)(?!\d)')
+
+
+def _pad_series_digit(series: str) -> Optional[str]:
+    """
+    If the slug contains a single isolated digit (not part of a longer
+    digit run), pad it to two digits. yuyu-tei stores series like
+    'sv2a' as 'sv02a', 'prb1' as 'prb01', 'op5' as 'op05'. This lets
+    users type the more natural unpadded form and still find content.
+
+    Returns the padded slug, or None if no single-digit run exists.
+    """
+    m = _SINGLE_DIGIT_RUN_RE.search(series or "")
+    if not m:
+        return None
+    return series[: m.start()] + "0" + m.group(1) + series[m.end() :]
+
+
 def resolve_tcg_for_series(series: str, hint: Optional[str] = None) -> tuple:
     """
     Determine which yuyu-tei TCG path ('poc' or 'opc') actually has content
-    for the given series slug. Returns (tcg_code, html).
+    for the given series slug. Returns (tcg_code, html, actual_series).
+
+    `actual_series` is the slug that was actually used to fetch content
+    (which may differ from the input if it had to be zero-padded, e.g.
+    'sv2a' -> 'sv02a'). Callers should use this for any image URLs or
+    downstream requests so they match the yuyu-tei page.
 
     Strategy:
-      1. If `hint` is given ('poc' or 'opc'), try it first. If the page has
-         any SECTION_HEADER_RE matches, accept it.
+      1. If `hint` is given ('poc' or 'opc'), try it first.
       2. Otherwise, use the slug-prefix heuristic to pick a first guess.
       3. Always verify by also fetching the other TCG path; pick whichever
          has the most section headers (real content beats a sidebar).
-      4. Fall back to the first guess if neither has content.
+      4. If neither path has content and the slug has a single-digit run
+         (e.g. 'sv2a'), retry with the digit zero-padded ('sv02a').
+      5. Fall back to the first guess if nothing works.
     """
     series = (series or "").lower()
     if not series:
@@ -110,26 +137,46 @@ def resolve_tcg_for_series(series: str, hint: Optional[str] = None) -> tuple:
             order.append(c)
             seen.add(c)
 
-    candidates: list[tuple] = []
-    for tcg in order:
-        try:
-            html = fetch_set_page(tcg, series)
-        except Exception as e:
-            print(f"[resolve_tcg] fetch {tcg}/{series} failed: {e}", file=sys.stderr)
-            continue
-        n = len(list(SECTION_HEADER_RE.finditer(html)))
-        candidates.append((tcg, html, n))
+    def _collect(slug: str) -> list[tuple]:
+        out: list[tuple] = []
+        for tcg in order:
+            try:
+                html = fetch_set_page(tcg, slug)
+            except Exception as e:
+                print(f"[resolve_tcg] fetch {tcg}/{slug} failed: {e}", file=sys.stderr)
+                continue
+            n = len(list(SECTION_HEADER_RE.finditer(html)))
+            out.append((tcg, html, n))
+        return out
+
+    candidates = _collect(series)
+    used_series = series
+
+    if not candidates or max(c[2] for c in candidates) == 0:
+        # Try a zero-padded variant if the slug has a single-digit run.
+        padded = _pad_series_digit(series)
+        if padded and padded != series:
+            print(
+                f"[resolve_tcg] no content for {series!r}, retrying as {padded!r}",
+                file=sys.stderr,
+            )
+            candidates = _collect(padded)
+            if candidates and max(c[2] for c in candidates) > 0:
+                used_series = padded
+                candidates.sort(key=lambda c: -c[2])
+                best_tcg, best_html, _ = candidates[0]
+                return best_tcg, best_html, used_series
 
     if not candidates:
         # Last resort: just use the prefix guess and raise on fetch
         tcg = _guess_tcg_by_prefix(series) or "poc"
-        return tcg, fetch_set_page(tcg, series)
+        return tcg, fetch_set_page(tcg, series), series
 
     # Pick the one with the most section headers; ties go to the first guess
     # order.
     candidates.sort(key=lambda c: -c[2])
     best_tcg, best_html, _ = candidates[0]
-    return best_tcg, best_html
+    return best_tcg, best_html, used_series
 
 
 def list_rarities(tcg_code: str, series: str) -> list[str]:
@@ -160,10 +207,11 @@ def list_rarities_for_series(series: str, hint: Optional[str] = None) -> dict:
     Auto-detect TCG and return rarities for the given series.
 
     Returns {"tcg": "poc"|"opc", "series": "...", "rarities": [...]} where
+    `series` is the slug that was actually used (padded if needed) and
     rarities may include the synthetic "GOLD-DON" entry for OPCG sets that
     have a real super-parallel ドン!! section.
     """
-    tcg, html = resolve_tcg_for_series(series, hint=hint)
+    tcg, html, actual_series = resolve_tcg_for_series(series, hint=hint)
     rarities = list({m.group(1).upper() for m in SECTION_HEADER_RE.finditer(html)})
     if (
         tcg == "opc"
@@ -171,7 +219,7 @@ def list_rarities_for_series(series: str, hint: Optional[str] = None) -> dict:
         and _has_real_gold_don(html)
     ):
         rarities.append("GOLD-DON")
-    return {"tcg": tcg, "series": series.lower(), "rarities": rarities}
+    return {"tcg": tcg, "series": actual_series, "rarities": rarities}
 
 
 def fetch_cards_in_rarity_for_series(
@@ -180,13 +228,14 @@ def fetch_cards_in_rarity_for_series(
     """
     Auto-detect TCG and return cards for the given series + rarity.
 
-    Returns {"tcg": ..., "series": ..., "rarity": ..., "cards": [...]}.
+    Returns {"tcg": ..., "series": ..., "rarity": ..., "cards": [...]}
+    where `series` is the slug actually used to fetch (padded if needed).
     """
-    tcg, _ = resolve_tcg_for_series(series, hint=hint)
-    cards = fetch_cards_in_rarity(tcg, series, rarity)
+    tcg, _, actual_series = resolve_tcg_for_series(series, hint=hint)
+    cards = fetch_cards_in_rarity(tcg, actual_series, rarity)
     return {
         "tcg": tcg,
-        "series": series.lower(),
+        "series": actual_series,
         "rarity": rarity,
         "cards": cards,
     }

@@ -165,9 +165,15 @@ export default function DatabasePage() {
       }
       // The backend auto-detects the TCG from the series slug; we just
       // pass the series and learn the TCG from the response.
+      // NOTE: Content-Type is `text/plain` (not `application/json`) so the
+      // browser treats this as a "simple" POST and skips the CORS
+      // preflight. The Fly edge proxy intercepts OPTIONS preflights and
+      // serves a bare 204 without our CORS headers, which Safari rejects.
+      // Sending `text/plain` is a standard workaround — the body is still
+      // valid JSON and the Python server parses it identically.
       const r = await fetch(`${PARSE_URL.replace('/parse', '')}/set-rarities`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
         body: JSON.stringify({ series: importSeries.trim() }),
       })
       const data = await r.json()
@@ -221,7 +227,9 @@ export default function DatabasePage() {
       for (const rarity of importRarities) {
         const r = await fetch(`${PARSE_URL.replace('/parse', '')}/set-cards`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          // text/plain to avoid CORS preflight — see comment in
+          // loadRaritiesForSeries() above.
+          headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
           body: JSON.stringify({ series: seriesSlug, rarity }),
         })
         const data = await r.json()
@@ -356,7 +364,9 @@ export default function DatabasePage() {
       if (PARSE_URL) {
         const r = await fetch(PARSE_URL, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          // text/plain to avoid CORS preflight — see comment in
+          // loadRaritiesForSeries() above.
+          headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
           body: JSON.stringify({ url }),
         })
         const data = await r.json()

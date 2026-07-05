@@ -1,5 +1,15 @@
 @import "tailwindcss";
 
+/* Prevent iOS Safari from auto-zooming when any form field receives focus.
+   16px is Safari's threshold — below it, the field is "assumed too small to
+   read" and Safari zooms the viewport to make it legible. */
+html {
+  -webkit-text-size-adjust: 100%;
+}
+input, select, textarea, button {
+  font-size: 1rem;
+}
+
 :root {
   /* Warm pastel palette — inspired by lowpoly diorama scenes */
   --bg-primary: #f5ede3;
@@ -178,7 +188,8 @@ body {
   border: 1.5px solid var(--border);
   border-radius: 10px;
   color: var(--text-primary);
-  font-size: 0.875rem;
+  /* 16px prevents iOS Safari from auto-zooming when the field is focused */
+  font-size: 1rem;
   font-family: inherit;
   outline: none;
   transition: border-color 0.2s, box-shadow 0.2s;

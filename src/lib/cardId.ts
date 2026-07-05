@@ -3,7 +3,7 @@
  *
  * Scheme:
  *   PTCG: 'ptcg' + series + digits(card_number) + lowercase(rarity) + yuyutei_slug
- *   OPCG: 'opcg' + digits(card_number) + letters-only-lowercase(rarity) + yuyutei_slug
+ *   OPCG (non-GOLD-DON): 'opcg' + series + indexSlug(card_index) + raritySlug + slug
  *   OPCG GOLD-DON: 'opcg' + series + 'golddon' + yuyutei_slug
  *     (uses card_series instead of card_index because GOLD-DON cards share
  *      the synthetic card_index "GOLD-DON" across all sets)
@@ -11,8 +11,8 @@
  * Examples:
  *   PTCG: series=s12a, card_number="259/172", rarity="UR", slug="10348"
  *     -> "ptcgs12a259172ur10348"
- *   OPCG: card_number="OP15-119", rarity="P-SEC", slug="10146"
- *     -> "opcg15psec10146"
+ *   OPCG: series="op11", card_number="OP05-119", rarity="SP", slug="10155"
+ *     -> "opcgop11op05119sp10155"
  *   OPCG GOLD-DON: series="op16", slug="10150"
  *     -> "opcgop16golddon10150"
  *
@@ -85,9 +85,12 @@ export function makeCardId(input: CardIdInputs): string {
       slug
     )
   }
-  // OPCG: keep letters and digits from the card_index, lowercase, no dashes
+  // OPCG (non-GOLD-DON): 'opcg' + series + indexSlug + raritySlug + yuyutei slug
+  //   Example: series="op11", card_index="OP05-119", rarity="SP", slug="10155"
+  //     -> "opcgop11op05119sp10155"
   return (
     'opcg' +
+    (input.card_series ?? '').toLowerCase() +
     opcgIndexSlug(input.card_index) +
     lettersOnlyLower(input.card_rarity) +
     slug

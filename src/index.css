@@ -306,11 +306,11 @@ select.input { appearance: none; cursor: pointer; }
 
 .mobile-bottom-nav__rail {
   pointer-events: auto;
-  width: min(100%, 640px);
+  width: min(100%, 720px);
   margin: 0 auto;
   padding: 0.14rem 0.32rem 0.22rem;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr)) auto repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto repeat(3, minmax(0, 1fr));
   align-items: end;
   gap: 0.08rem;
   background: rgba(255,248,242,0.94);
@@ -335,6 +335,7 @@ select.input { appearance: none; cursor: pointer; }
   font-weight: 700;
   letter-spacing: 0.01em;
   line-height: 1;
+  white-space: nowrap;
   transform: translateY(-0.5rem);
   transition: transform 0.2s cubic-bezier(0.4,0,0.2,1), color 0.2s cubic-bezier(0.4,0,0.2,1), background 0.2s cubic-bezier(0.4,0,0.2,1);
 }

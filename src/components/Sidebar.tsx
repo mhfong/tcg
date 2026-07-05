@@ -83,11 +83,11 @@ const desktopNavItems: NavItem[] = [
 
 const mobileNavItems: NavItem[] = [
   { to: '/settings', label: 'Settings', Icon: SettingsIcon },
-  { to: '/transactions', label: 'Transactions', Icon: TransactionsIcon },
-  { to: '/', label: 'Dashboard', Icon: DashboardIcon, end: true, center: true },
   { to: '/watchlist', label: 'Watchlist', Icon: WatchlistIcon },
-  { to: '/inventory', label: 'Inventory', Icon: InventoryIcon },
+  { to: '/', label: 'Dashboard', Icon: DashboardIcon, end: true, center: true },
   { to: '/database', label: 'Database', Icon: DatabaseIcon },
+  { to: '/inventory', label: 'Inventory', Icon: InventoryIcon },
+  { to: '/transactions', label: 'Transactions', Icon: TransactionsIcon },
 ]
 
 export default function Sidebar() {

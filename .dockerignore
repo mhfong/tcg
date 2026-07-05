@@ -1,0 +1,46 @@
+# Keep the Docker build context small — the proxy only needs a handful of
+# files. The frontend, node_modules, .git, .env, and OS junk are excluded.
+
+# Frontend (not needed in the proxy image)
+node_modules
+dist
+src
+public
+index.html
+*.ts
+*.tsx
+*.css
+*.js
+*.jsx
+vite.config.ts
+tsconfig*.json
+eslint.config.js
+package.json
+package-lock.json
+
+# Local data and secrets
+.env
+.env.*
+data
+*.csv
+secret.py
+
+# VCS and editor cruft
+.git
+.gitignore
+.DS_Store
+.vscode
+.idea
+
+# Python caches
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.mypy_cache
+
+# Documentation that doesn't need to ship
+*.md
+!scripts/PROXY_DEPLOY.md
+README.md

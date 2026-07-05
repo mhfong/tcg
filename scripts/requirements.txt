@@ -1,2 +1,4 @@
-httpx
-supabase
+# Only used by scripts/parse_server.py and the scraper modules it loads
+# (scripts/scraper.py, scripts/scrape_set.py). The frontend (src/) has its
+# own package.json and does not consume this file.
+httpx>=0.27

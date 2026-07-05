@@ -115,6 +115,30 @@ export default function DatabasePage() {
     setImportOpen(false)
   }
 
+  // The fetch helpers below all hit `VITE_YUYUTEI_PARSE_URL`. When the
+  // browser can't reach the URL at all (server down, cross-device, mixed
+  // content, etc.) the error is a generic "Failed to fetch" / "Load
+  // failed" — replace those with a clear message explaining what the
+  // user actually needs to do.
+  function explainNetworkError(e: unknown): string {
+    const raw = e instanceof Error ? e.message : String(e)
+    const looksLikeNetwork =
+      /failed to fetch|load failed|networkerror|network request failed/i.test(raw) ||
+      // `TypeError` is what `fetch()` throws on a connection failure.
+      (e instanceof TypeError && !/json/i.test(raw))
+    if (!looksLikeNetwork) return raw
+    return (
+      "Can't reach the yuyu-tei proxy at " +
+      (PARSE_URL ?? '(not configured)') +
+      '. The Import from yuyu-tei feature needs a small proxy server ' +
+      "because yuyu-tei blocks the deployed site's IP. " +
+      'To fix: (1) run `python scripts/parse_server.py` on the same ' +
+      'machine as your browser, OR (2) deploy the proxy publicly and set ' +
+      'VITE_YUYUTEI_PARSE_URL in .env. See scripts/PROXY_DEPLOY.md for the ' +
+      'public-deploy option.'
+    )
+  }
+
   async function loadRaritiesForSeries() {
     if (!importSeries.trim()) {
       setError('Please enter a series slug (e.g. s12a, op15)')
@@ -124,7 +148,10 @@ export default function DatabasePage() {
     setImporting(true)
     try {
       if (!PARSE_URL) {
-        throw new Error('VITE_YUYUTEI_PARSE_URL is not configured')
+        throw new Error(
+          'VITE_YUYUTEI_PARSE_URL is not configured. ' +
+            'Set it in .env (local) or rebuild with a public proxy URL.',
+        )
       }
       // The backend auto-detects the TCG from the series slug; we just
       // pass the series and learn the TCG from the response.
@@ -149,7 +176,7 @@ export default function DatabasePage() {
       setAvailableRarities(rarities)
       setImportRarities([]) // reset selection
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(explainNetworkError(e))
       setAvailableRarities([])
       setDetectedTcg(null)
       setResolvedSeries('')
@@ -172,7 +199,10 @@ export default function DatabasePage() {
     setImportedCards([])
     try {
       if (!PARSE_URL) {
-        throw new Error('VITE_YUYUTEI_PARSE_URL is not configured')
+        throw new Error(
+          'VITE_YUYUTEI_PARSE_URL is not configured. ' +
+            'Set it in .env (local) or rebuild with a public proxy URL.',
+        )
       }
       const tcg = detectedTcg
       // Use the resolved (possibly padded) series for everything below.
@@ -201,7 +231,7 @@ export default function DatabasePage() {
       setImportedCards(collected)
       setImportStage('preview')
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(explainNetworkError(e))
     } finally {
       setImporting(false)
     }
@@ -1039,6 +1069,28 @@ export default function DatabasePage() {
 
             {importStage === 'select' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+                {PARSE_URL && /127\.0\.0\.1|localhost/i.test(PARSE_URL) && (
+                  <div
+                    style={{
+                      fontSize: '0.75rem',
+                      color: 'var(--text-secondary)',
+                      background: 'rgba(155, 184, 224, 0.08)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 6,
+                      padding: '0.5rem 0.75rem',
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    <strong style={{ color: 'var(--text-primary)' }}>
+                      Local proxy required.
+                    </strong>{' '}
+                    The backend at <code>{PARSE_URL}</code> only works when
+                    <code> scripts/parse_server.py</code> is running on the same
+                    machine as your browser. If you opened this site on a phone or
+                    another device, the import will fail. See{' '}
+                    <code>scripts/PROXY_DEPLOY.md</code> for a public-deploy option.
+                  </div>
+                )}
                 <div className="form-field">
                   <label className="form-label">Series slug</label>
                   <input

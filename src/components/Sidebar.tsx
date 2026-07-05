@@ -10,7 +10,6 @@ type NavItem = {
   label: string
   Icon: IconComponent
   end?: boolean
-  center?: boolean
 }
 
 function DashboardIcon(props: SVGProps<SVGSVGElement>) {
@@ -83,11 +82,11 @@ const desktopNavItems: NavItem[] = [
 
 const mobileNavItems: NavItem[] = [
   { to: '/settings', label: 'Settings', Icon: SettingsIcon },
-  { to: '/watchlist', label: 'Watchlist', Icon: WatchlistIcon },
-  { to: '/', label: 'Dashboard', Icon: DashboardIcon, end: true, center: true },
   { to: '/database', label: 'Database', Icon: DatabaseIcon },
-  { to: '/inventory', label: 'Inventory', Icon: InventoryIcon },
   { to: '/transactions', label: 'Transactions', Icon: TransactionsIcon },
+  { to: '/inventory', label: 'Inventory', Icon: InventoryIcon },
+  { to: '/watchlist', label: 'Watchlist', Icon: WatchlistIcon },
+  { to: '/', label: 'Dashboard', Icon: DashboardIcon, end: true },
 ]
 
 export default function Sidebar() {
@@ -134,38 +133,19 @@ export default function Sidebar() {
 
       <div className="mobile-bottom-nav" aria-label="Mobile navigation">
         <nav className="mobile-bottom-nav__rail">
-          {mobileNavItems.map(item => {
-            if (item.center) {
-              return (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  end={item.end}
-                  aria-label={item.label}
-                  className={({ isActive }) => `mobile-nav-link mobile-nav-link--dashboard${isActive ? ' is-active' : ''}`}
-                >
-                  <span className="mobile-nav-link__button">
-                    <item.Icon aria-hidden="true" focusable="false" />
-                  </span>
-                  <span className="sr-only">{item.label}</span>
-                </NavLink>
-              )
-            }
-
-            return (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.end}
-                className={({ isActive }) => `mobile-nav-link${isActive ? ' is-active' : ''}`}
-              >
-                <span className="mobile-nav-link__icon">
-                  <item.Icon aria-hidden="true" focusable="false" />
-                </span>
-                <span>{item.label}</span>
-              </NavLink>
-            )
-          })}
+          {mobileNavItems.map(item => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.end}
+              className={({ isActive }) => `mobile-nav-link${isActive ? ' is-active' : ''}`}
+            >
+              <span className="mobile-nav-link__icon">
+                <item.Icon aria-hidden="true" focusable="false" />
+              </span>
+              <span>{item.label}</span>
+            </NavLink>
+          ))}
         </nav>
       </div>
     </>

@@ -1,46 +1,35 @@
-# fly.toml — Fly.io app config for the yuyu-tei parse proxy.
+# fly.toml app configuration file generated for yuyutei-parse on 2026-07-06T00:35:16+08:00
 #
-# This is the *config only*. To actually create + deploy the app:
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
-#   1. Install the Fly CLI:        brew install flyctl
-#   2. Sign in:                    fly auth signup
-#   3. From the repo root:         fly launch --no-deploy
-#      (it will detect the Dockerfile and reuse the app name "yuyutei-parse"
-#       below; answer "yes" to copy config, "no" to postgres/redis)
-#   4. Deploy:                     fly deploy
-#   5. Test:                       curl https://yuyutei-parse.fly.dev/health
-#   6. Set VITE_YUYUTEI_PARSE_URL=https://yuyutei-parse.fly.dev/parse
-#      in .env (production) and rebuild the frontend.
-#
-# See scripts/PROXY_DEPLOY.md for the full walkthrough.
 
-app = "yuyutei-parse"
-primary_region = "nrt"  # Tokyo — closest to yuyu-tei.jp
+app = 'yuyutei-parse'
+primary_region = 'nrt'
 
 [build]
-  dockerfile = "Dockerfile"
+  dockerfile = 'Dockerfile'
 
 [env]
-  PORT = "8787"
+  PORT = '8787'
 
 [http_service]
   internal_port = 8787
   force_https = true
-  auto_stop_machines = "stop"
+  auto_stop_machines = 'stop'
   auto_start_machines = true
-  min_machines_running = 0   # scale to zero when idle (free-tier friendly)
-  processes = ["app"]
+  min_machines_running = 0
+  processes = ['app']
 
   [[http_service.checks]]
-    interval = "30s"
-    timeout = "5s"
-    grace_period = "10s"
-    method = "GET"
-    path = "/health"
+    interval = '30s'
+    timeout = '5s'
+    grace_period = '10s'
+    method = 'GET'
+    path = '/health'
 
-# Free-tier allocation: shared CPU, 256MB RAM. Plenty for a tiny proxy.
 [[vm]]
-  size = "shared-cpu-1x"
-  memory = "256mb"
-  cpu_kind = "shared"
+  size = 'shared-cpu-1x'
+  memory = '256mb'
+  cpu_kind = 'shared'
   cpus = 1
+  memory_mb = 256

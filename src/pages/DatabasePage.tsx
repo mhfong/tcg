@@ -116,10 +116,10 @@ export default function DatabasePage() {
   }
 
   // The fetch helpers below all hit `VITE_YUYUTEI_PARSE_URL`. When the
-  // browser can't reach the URL at all (server down, cross-device, mixed
-  // content, etc.) the error is a generic "Failed to fetch" / "Load
-  // failed" — replace those with a clear message explaining what the
-  // user actually needs to do.
+  // browser can't reach the URL at all (server down, cross-device,
+  // URL points to a not-yet-deployed host, etc.) the error is a generic
+  // "Failed to fetch" / "Load failed" — replace those with a clear
+  // message explaining what the user actually needs to do.
   function explainNetworkError(e: unknown): string {
     const raw = e instanceof Error ? e.message : String(e)
     const looksLikeNetwork =
@@ -127,15 +127,25 @@ export default function DatabasePage() {
       // `TypeError` is what `fetch()` throws on a connection failure.
       (e instanceof TypeError && !/json/i.test(raw))
     if (!looksLikeNetwork) return raw
+
+    const url = PARSE_URL ?? '(not configured)'
+    const isLocal = /127\.0\.0\.1|localhost/i.test(url)
+    // Non-localhost URL that the browser can't reach is almost always
+    // a "proxy not deployed yet" situation — give a more specific fix.
+    const isPublicHost = !isLocal
     return (
       "Can't reach the yuyu-tei proxy at " +
-      (PARSE_URL ?? '(not configured)') +
+      url +
       '. The Import from yuyu-tei feature needs a small proxy server ' +
       "because yuyu-tei blocks the deployed site's IP. " +
-      'To fix: (1) run `python scripts/parse_server.py` on the same ' +
-      'machine as your browser, OR (2) deploy the proxy publicly and set ' +
-      'VITE_YUYUTEI_PARSE_URL in .env. See scripts/PROXY_DEPLOY.md for the ' +
-      'public-deploy option.'
+      (isPublicHost
+        ? 'The URL in VITE_YUYUTEI_PARSE_URL points to a public host, ' +
+          'but the proxy doesn\'t seem to be running there. ' +
+          'If you haven\'t deployed yet, follow scripts/PROXY_DEPLOY.md ' +
+          '(Fly.io / Render / VPS) to deploy it. '
+        : 'To fix: (1) run `python scripts/parse_server.py` on the same ' +
+          'machine as your browser, OR (2) deploy the proxy publicly and ' +
+          'point VITE_YUYUTEI_PARSE_URL at it. See scripts/PROXY_DEPLOY.md. ')
     )
   }
 

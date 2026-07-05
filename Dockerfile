@@ -13,7 +13,9 @@
 FROM python:3.12-slim
 
 # Create a non-root user for the proxy.
-RUN useradd --create-home --shell /bin/bash proxy
+# `|| true` because some base images (e.g. python:3.12-slim) ship with a
+# `proxy` user already; we don't want the build to fail in that case.
+RUN useradd --create-home --shell /bin/bash proxy 2>/dev/null || true
 WORKDIR /app
 
 # Install dependencies first for layer caching. Only httpx is needed at

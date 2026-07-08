@@ -175,6 +175,48 @@ def discover_apparel_id(slug: str) -> str | None:
     return slug if r.status_code == 200 else None
 
 
+def load_manual_mappings(csv_path: Path, cards: list[dict]) -> int:
+    """Read data/master_snkrdunk.csv and apply any verified mappings to
+    master_table.snkr_dunk_apparel_id. Skips rows where snkrdunk_apparel_id is
+    blank or already cached. Returns the number of NEW mappings applied.
+
+    The CSV must have columns: master_id, snkrdunk_apparel_id, verified_at
+    """
+    if not csv_path.exists():
+        return 0
+    by_id = {c["id"]: c for c in cards}
+    applied = 0
+    with csv_path.open() as f:
+        for row in csv.DictReader(f):
+            mid = (row.get("master_id") or "").strip()
+            aid = (row.get("snkrdunk_apparel_id") or "").strip()
+            if not mid or not aid:
+                continue
+            card = by_id.get(mid)
+            if not card:
+                print(f"  ! {mid} not in master_table, skipping", file=sys.stderr)
+                continue
+            if card.get("snkrdunk_apparel_id") == aid:
+                continue  # already cached
+            if card.get("snkrdunk_apparel_id"):
+                print(f"  ! {mid} already cached as {card['snkrdunk_apparel_id']}, "
+                      f"skipping manual override to {aid}", file=sys.stderr)
+                continue
+            try:
+                supabase_patch(
+                    "master_table",
+                    {"snkrdunk_apparel_id": aid},
+                    id=f"eq.{mid}",
+                )
+            except httpx.HTTPError as e:
+                print(f"  ! failed to cache {aid} for {mid}: {e}", file=sys.stderr)
+                continue
+            card["snkrdunk_apparel_id"] = aid
+            applied += 1
+            print(f"  + {mid} -> {aid} (from {csv_path.name})", file=sys.stderr)
+    return applied
+
+
 def discover_for_cards(cards: list[dict]) -> int:
     """Try to discover apparel_id for cards that don't have one cached yet.
 
@@ -276,6 +318,16 @@ def main() -> int:
     print(f"[snkrdunk] {len(cards)} cards in master_table", file=sys.stderr)
 
     if not SKIP_DISCOVERY:
+        # 1. Manual CSV mappings first (faster, more reliable than discovery)
+        manual_csv = Path(__file__).resolve().parent.parent / "data" / "master_snkrdunk.csv"
+        if manual_csv.exists():
+            n_manual = load_manual_mappings(manual_csv, cards)
+            print(f"[snkrdunk] applied {n_manual} manual mapping(s) from {manual_csv.name}",
+                  file=sys.stderr)
+        else:
+            print(f"[snkrdunk] no manual mapping file at {manual_csv}",
+                  file=sys.stderr)
+        # 2. Auto-discovery for whatever's still missing
         print(f"[snkrdunk] discovering (batch_size={BATCH_SIZE}) ...",
               file=sys.stderr)
         n_new = discover_for_cards(cards)

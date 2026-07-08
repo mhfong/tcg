@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS master_table (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 GRANT SELECT, INSERT, UPDATE, DELETE ON master_table TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON master_table TO service_role;
 
 CREATE INDEX IF NOT EXISTS idx_master_table_snkrdunk_apparel
   ON master_table(snkrdunk_apparel_id) WHERE snkrdunk_apparel_id IS NOT NULL;
@@ -54,6 +55,7 @@ CREATE TABLE IF NOT EXISTS price_history (
   scraped_at    TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
 GRANT SELECT, INSERT, UPDATE, DELETE ON price_history TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON price_history TO service_role;
 
 CREATE INDEX IF NOT EXISTS idx_price_history_card_date
   ON price_history(card_id, observed_date DESC);
@@ -71,6 +73,7 @@ CREATE TABLE IF NOT EXISTS watchlist (
   UNIQUE(user_id, card_id)
 );
 GRANT SELECT, INSERT, UPDATE, DELETE ON watchlist TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON watchlist TO service_role;
 
 -- 4. Transactions (per user)
 CREATE TABLE IF NOT EXISTS transactions (
@@ -86,6 +89,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 GRANT SELECT, INSERT, UPDATE, DELETE ON transactions TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON transactions TO service_role;
 
 -- ============================================
 -- Row Level Security (RLS) Policies

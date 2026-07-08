@@ -17,22 +17,50 @@ CREATE TABLE IF NOT EXISTS master_table (
   card_name TEXT NOT NULL DEFAULT '',
   card_rarity TEXT NOT NULL,
   url_yuyutei TEXT,
+  -- SNKRDUNK apparel id (e.g. '515454'). Discovered lazily by the daily scraper
+  -- and cached here so the next run skips the discovery step.
+  snkrdunk_apparel_id TEXT,
   created_at TIMESTAMPTZ DEFAULT now()
 );
 GRANT SELECT, INSERT, UPDATE, DELETE ON master_table TO authenticated;
 
+CREATE INDEX IF NOT EXISTS idx_master_table_snkrdunk_apparel
+  ON master_table(snkrdunk_apparel_id) WHERE snkrdunk_apparel_id IS NOT NULL;
+
 -- 2. Price history (populated by scraper)
+--
+-- Each row is one historical sale (source='jp', JPY + true sale date) OR
+-- one current EN listing snapshot (source='en', HKD + scrape date = today).
+-- Only PSA 10 and A (RAW_A) conditions are stored, mapped to the app enum
+-- in src/lib/types.ts. The legacy `price` column is kept (always JPY) so the
+-- existing frontend reads (WatchlistPage, InventoryPage, DashboardPage) keep
+-- working without changes; the change% math stays correct because every row's
+-- `price` is in the same currency.
+--
+-- Migration note: this is a destructive overwrite. If the old table has data
+-- you want to preserve, dump it first:
+--   supabase db dump --table price_history > price_history.old.sql
 CREATE TABLE IF NOT EXISTS price_history (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  card_id TEXT NOT NULL REFERENCES master_table(id) ON DELETE CASCADE,
-  condition TEXT NOT NULL CHECK (condition IN ('PSA10', 'TAG10', 'RAW_A')),
-  price INTEGER NOT NULL,
-  buyers_count INTEGER DEFAULT 0,
-  scraped_at TIMESTAMPTZ DEFAULT now()
+  id            UUID         DEFAULT gen_random_uuid() PRIMARY KEY,
+  card_id       TEXT         NOT NULL REFERENCES master_table(id) ON DELETE CASCADE,
+  source        TEXT         NOT NULL CHECK (source IN ('jp', 'en')),
+  condition     TEXT         NOT NULL CHECK (condition IN ('PSA10', 'RAW_A')),
+  observed_date DATE         NOT NULL,
+  price         INTEGER      NULL,        -- always JPY (null for source='en' rows)
+  price_hkd     INTEGER      NULL,        -- only set for source='en' rows
+  status        TEXT         NOT NULL CHECK (status IN ('sold', 'listed')),
+  listing_id    TEXT         NULL,        -- SNKRDUNK ULID, only for source='en'
+  apparel_id    TEXT         NULL,        -- SNKRDUNK product id, for debugging
+  scraped_at    TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
 GRANT SELECT, INSERT, UPDATE, DELETE ON price_history TO authenticated;
 
-CREATE INDEX IF NOT EXISTS idx_price_history_card_date ON price_history(card_id, scraped_at DESC);
+CREATE INDEX IF NOT EXISTS idx_price_history_card_date
+  ON price_history(card_id, observed_date DESC);
+CREATE INDEX IF NOT EXISTS idx_price_history_apparel_date
+  ON price_history(apparel_id, observed_date DESC);
+CREATE INDEX IF NOT EXISTS idx_price_history_card_condition_date
+  ON price_history(card_id, condition, observed_date DESC);
 
 -- 3. Watchlist (per user)
 CREATE TABLE IF NOT EXISTS watchlist (

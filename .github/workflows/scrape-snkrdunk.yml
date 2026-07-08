@@ -1,0 +1,35 @@
+name: Scrape SNKRDUNK Prices
+
+on:
+  schedule:
+    # 03:00 UTC = 12:00 JST (1 hour after the yuyu-tei scraper finishes at 02:00 JST)
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install Python deps
+        run: pip install -r scripts/requirements.txt
+
+      - name: Install Playwright + Chromium
+        run: playwright install --with-deps chromium
+
+      - name: Scrape all master_table cards
+        env:
+          SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # Limit NEW discoveries per run so the first run doesn't time out.
+          # Once the master_table.snkr_dunk_apparel_id cache is filled, this
+          # limit doesn't matter (cached cards skip discovery).
+          SNKRDUNK_BATCH_SIZE: '200'
+        run: python scripts/scrape_snkrdunk_all.py

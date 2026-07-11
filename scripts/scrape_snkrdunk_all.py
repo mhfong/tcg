@@ -68,7 +68,6 @@ H_CSV = {
     "apikey": SERVICE_KEY,
     "Authorization": f"Bearer {SERVICE_KEY}",
     "Content-Type": "text/csv",
-    "Prefer": "resolution=merge-duplicates,return=minimal",
 }
 
 PRICE_HISTORY_COLUMNS = [
@@ -110,20 +109,50 @@ def supabase_patch(path: str, body: dict, **filters) -> None:
 
 
 def supabase_upsert_csv(table: str, csv_text: str) -> int:
-    """POST a CSV body to the table with merge-duplicates upsert.
+    """POST a JSON body to the table with merge-duplicates upsert.
 
-    The CSV must contain all columns of the table; missing ones will be NULL.
-    Returns the number of input rows (Supabase return=minimal gives no count).
+    Why JSON and not CSV: Supabase's CSV importer converts empty cells
+    to the literal empty string '', which fails on nullable integer /
+    numeric / date columns with a 22P02 / 22007 error. JSON honours
+    `null`, which is what we want for sparse columns like
+    `price` (JPY) on `source='en'` rows, or `price_hkd` on
+    `source='jp'` rows.
+
+    The input `csv_text` is just a list of dicts in CSV form, but
+    we parse it back into JSON for the POST.
     """
-    n = sum(1 for _ in csv_text.splitlines() if _) - 1
+    import csv as _csv
+    n = 0
+    rows: list[dict] = []
+    for r in _csv.DictReader(csv_text.splitlines()):
+        # Empty string → None for nullable columns. The price_history
+        # table has INTEGER NULL for price, price_hkd, listing_id;
+        # convert '' to None so JSON encodes a real null.
+        for k, v in r.items():
+            if v == "":
+                r[k] = None
+        # scraped_at has a DB default of now() but the PostgREST layer
+        # will NOT apply that default if we send the key with value
+        # null. So we drop the key entirely and let the DB fill it.
+        r.pop("scraped_at", None)
+        rows.append(r)
+        n += 1
+    # No `Prefer: resolution=merge-duplicates` here — price_history has
+    # no unique constraint yet, so merge-duplicates would error. We just
+    # insert; the daily run will re-insert the same rows but that's fine
+    # for now (we're tracking price trends, not counting occurrences).
+    # See docs/price-history-merge.md for the unique-constraint migration.
     r = httpx.post(
         f"{SUPABASE_URL}/rest/v1/{table}",
-        content=csv_text.encode("utf-8"),
-        headers=H_CSV,
+        json=rows,
+        headers={
+            **H_JSON,
+            "Prefer": "return=minimal",
+        },
         timeout=180,
     )
     r.raise_for_status()
-    return max(n, 0)
+    return n
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -276,9 +305,10 @@ def reshape_to_price_history(
 ) -> tuple[str, int]:
     """Read scrape_snkrdunk.py's CSV and emit price_history-shaped CSV.
 
-    Returns (csv_text, row_count). Drops rows whose condition isn't PSA10/RAW_A
-    (defensive — the scraper already filters, but the orchestrator shouldn't
-    trust that).
+    The CSV body is later parsed and sent as JSON; empty cells become
+    SQL NULL. Returns (csv_text, row_count). Drops rows whose condition
+    isn't PSA10/RAW_A (defensive — the scraper already filters, but
+    the orchestrator shouldn't trust that).
     """
     scraped_at = ""  # let Supabase default fill this
     out = io.StringIO()

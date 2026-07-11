@@ -1,0 +1,77 @@
+name: Discover SNKRDUNK apparel_ids for new cards
+
+on:
+  # Triggered by the Supabase Database Webhook via the GitHub
+  # repository_dispatch API. The webhook is configured in the
+  # Supabase dashboard; see scripts/setup_snkrdunk_webhook.py for
+  # the programmatic equivalent.
+  repository_dispatch:
+    types: [new-card]
+  # Manual trigger for testing and for catching up on missed events
+  workflow_dispatch:
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install Python deps
+        run: pip install -r scripts/requirements.txt
+
+      - name: Install Playwright + Chromium
+        run: playwright install --with-deps chromium
+
+      - name: Discover apparel_ids for unmapped cards
+        env:
+          SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # Optional. If set, the script uses SNKRDUNK's authenticated
+          # v2 search for full automation. If unset, the script falls
+          # back to guided mode and writes a search URL to the CSV.
+          SNKRDUNK_SESSION_ID: ${{ secrets.SNKRDUNK_SESSION_ID }}
+          # When triggered by a Supabase webhook, the Edge Function
+          # forwards the new card's master_id here. The script then
+          # only discovers that one card instead of re-scanning all.
+          SNKRDUNK_TARGET_MASTER_ID: ${{ github.event.client_payload.master_id }}
+        run: |
+          # Build optional --only-this flag
+          TARGET=""
+          if [ -n "$SNKRDUNK_TARGET_MASTER_ID" ]; then
+            TARGET="--only-this $SNKRDUNK_TARGET_MASTER_ID"
+            echo "Targeted discovery for: $SNKRDUNK_TARGET_MASTER_ID"
+          else
+            TARGET="--only-missing"
+            echo "Bulk discovery for all unmapped cards"
+          fi
+          python scripts/discover_snkrdunk_ids.py $TARGET --apply \
+            2>&1 | tee discover.log
+
+      - name: Commit updated data/master_snkrdunk.csv
+        # Only commit if the file changed (i.e. we found new apparel_ids
+        # or refreshes card_name_hint)
+        run: |
+          if git diff --quiet data/master_snkrdunk.csv; then
+            echo "no CSV changes"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add data/master_snkrdunk.csv
+            git commit -m "Auto: refresh SNKRDUNK search URLs / apparel_ids" \
+              -m "Triggered by repository_dispatch event_type=new-card." || true
+            git push
+          fi
+
+      - name: Upload discover log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: snkrdunk-discover-log
+          path: discover.log
+          retention-days: 7

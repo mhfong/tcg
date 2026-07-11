@@ -44,3 +44,11 @@ data/*
 !data/.gitkeep
 !data/master_snkrdunk.csv
 .github/*
+
+# Local scrape output (created by `python scripts/scrape_snkrdunk.py
+# --output <file>.csv` and by daily cron runs). Don't commit.
+snkrdunk_history.csv
+opcg-*.csv
+op06-119-*.csv
+op05-119-*.csv
+/tmp/snkrdunk_*.csv

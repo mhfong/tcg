@@ -352,6 +352,17 @@ def main(args: argparse.Namespace) -> int:
         print(f"[snkrdunk-discover] {before - len(cards)} already mapped, "
               f"{len(cards)} to discover", file=sys.stderr)
 
+    if args.only_this:
+        before = len(cards)
+        cards = [c for c in cards if c.get("id") == args.only_this]
+        if not cards:
+            print(f"[snkrdunk-discover] --only-this={args.only_this!r} "
+                  f"didn't match any master_id in the table; nothing to do",
+                  file=sys.stderr)
+            return 0
+        print(f"[snkrdunk-discover] --only-this: {len(cards)} card selected",
+              file=sys.stderr)
+
     if args.limit:
         cards = cards[: args.limit]
 
@@ -519,6 +530,10 @@ def cli() -> int:
                     help="Only process the first N cards (debug)")
     ap.add_argument("--only-missing", action="store_true",
                     help="Skip cards that already have a snkrdunk_apparel_id")
+    ap.add_argument("--only-this", default="",
+                    help="Only process this one master_id (used by the "
+                         "GitHub Actions workflow when triggered by a "
+                         "single Supabase webhook event)")
     ap.add_argument("--apply", action="store_true",
                     help="PATCH master_table.snkr_dunk_apparel_id in Supabase "
                          "for each confident match (cookie mode only)")

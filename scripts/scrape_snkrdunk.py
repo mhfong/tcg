@@ -179,11 +179,16 @@ async def scrape_jp_sales_history(page, apparel_id: str) -> list[dict]:
     url = f"{JP_BASE}/apparels/{apparel_id}/sales-histories"
     await page.goto(url, wait_until="domcontentloaded", timeout=60_000)
     # The sales-history sections are hydrated by client-side JS after the
-    # initial paint. Wait until the first section's <ul> has actual <li.used>
-    # rows (not the "no transactions" placeholder).
+    # initial paint. Wait for the first section's <ul> to be either
+    # populated with <li.used> rows OR show the "no transactions"
+    # placeholder (<p class="no-text">まだこの商品は取引がありません。</p>).
+    # Some cards (e.g. rare parallel reprints) have zero history on
+    # SNKRDUNK, and we shouldn't fail the whole scrape for that.
     await page.wait_for_function(
         "() => { const ul = document.querySelector('ul.sales-history.item-list');"
-        " return ul && ul.querySelector('li.used'); }",
+        " if (!ul) return false;"
+        " return ul.querySelector('li.used')"
+        "     || ul.querySelector('p.no-text'); }",
         timeout=30_000,
     )
     # Give the other 15 sections a moment to hydrate too.
@@ -276,7 +281,16 @@ async def scrape_en_listings(page, apparel_id: str, condition_label: str) -> lis
         f"?sort=latest&isOnlyOnSale=false&conditionId={condition_id}"
     )
     await page.goto(url, wait_until="domcontentloaded", timeout=60_000)
-    await page.wait_for_selector('a[href*="/trading-cards/used/listings/"]', timeout=30_000)
+    # Wait for either at least one listing link OR the "no listings"
+    # placeholder. Some cards have 0 EN listings; the daily cron should
+    # still complete (returning []).
+    await page.wait_for_function(
+        "() => document.querySelectorAll('a[href*=\"/trading-cards/used/listings/\"]').length > 0"
+        "     || !!document.querySelector('[class*=\"no-result\" i]')"
+        "     || !!document.querySelector('[class*=\"empty\" i]')"
+        "     || !!document.querySelector('p.no-text')",
+        timeout=30_000,
+    )
     await _scroll_until_stable(page)
     listings = await page.evaluate(EN_EXTRACT_JS)
     today_iso = date.today().isoformat()
@@ -333,16 +347,30 @@ async def run(args: argparse.Namespace) -> int:
 
             # 1) JP sales history (JPY + dates, all conditions)
             print(f"[jp] scraping {JP_BASE}/apparels/{apparel_id}/sales-histories ...", file=sys.stderr)
-            jp_rows = await scrape_jp_sales_history(page, apparel_id)
-            print(f"[jp] {len(jp_rows)} historical sales", file=sys.stderr)
-            rows.extend(jp_rows)
+            try:
+                jp_rows = await scrape_jp_sales_history(page, apparel_id)
+                print(f"[jp] {len(jp_rows)} historical sales", file=sys.stderr)
+                rows.extend(jp_rows)
+            except Exception as e:
+                # Some cards (rare parallel reprints, EN-only products) have
+                # no JP history at all. Treat as "0 rows" and keep going.
+                print(f"[jp] warning: {type(e).__name__}: {e}", file=sys.stderr)
+                print(f"[jp] 0 historical sales (treat as no-data)", file=sys.stderr)
 
             # 2) EN listings for A and PSA 10 (HKD)
             for cond in ("A", "PSA 10"):
                 print(f"[en] scraping {cond} listings ...", file=sys.stderr)
-                en_rows = await scrape_en_listings(page, apparel_id, cond)
-                print(f"[en] {cond}: {len(en_rows)} listings", file=sys.stderr)
-                rows.extend(en_rows)
+                try:
+                    en_rows = await scrape_en_listings(page, apparel_id, cond)
+                    print(f"[en] {cond}: {len(en_rows)} listings", file=sys.stderr)
+                    rows.extend(en_rows)
+                except Exception as e:
+                    # Same as JP — some cards have 0 EN listings. Don't
+                    # kill the whole scrape; just record and continue.
+                    print(f"[en] warning ({cond}): {type(e).__name__}: {e}",
+                          file=sys.stderr)
+                    print(f"[en] {cond}: 0 listings (treat as no-data)",
+                          file=sys.stderr)
         finally:
             await browser.close()
 

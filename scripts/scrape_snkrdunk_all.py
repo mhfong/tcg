@@ -137,17 +137,16 @@ def supabase_upsert_csv(table: str, csv_text: str) -> int:
         r.pop("scraped_at", None)
         rows.append(r)
         n += 1
-    # No `Prefer: resolution=merge-duplicates` here — price_history has
-    # no unique constraint yet, so merge-duplicates would error. We just
-    # insert; the daily run will re-insert the same rows but that's fine
-    # for now (we're tracking price trends, not counting occurrences).
-    # See docs/price-history-merge.md for the unique-constraint migration.
+    # Use `Prefer: resolution=merge-duplicates` because price_history
+    # has a UNIQUE constraint on the natural key (added by
+    # scripts/dedupe_price_history.sql). Duplicate rows on re-run
+    # collapse instead of stacking up.
     r = httpx.post(
         f"{SUPABASE_URL}/rest/v1/{table}",
         json=rows,
         headers={
             **H_JSON,
-            "Prefer": "return=minimal",
+            "Prefer": "resolution=merge-duplicates,return=minimal",
         },
         timeout=180,
     )

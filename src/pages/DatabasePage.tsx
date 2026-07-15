@@ -1377,7 +1377,7 @@ export default function DatabasePage() {
                             </tr>
                           )
                         }
-                        return filtered.map(({ c, idx }) => {
+                        return filtered.map(({ c, i: idx }) => {
                           const isExcluded = excludedIdx.has(idx)
                           return (
                             <tr

@@ -25,11 +25,11 @@
 const DIGITS_ONLY = /\D/g
 const NON_LETTERS = /[^a-z]/g
 
-export function digitsOnly(s: string): string {
+function digitsOnly(s: string): string {
   return (s ?? '').replace(DIGITS_ONLY, '')
 }
 
-export function lettersOnlyLower(s: string): string {
+function lettersOnlyLower(s: string): string {
   return (s ?? '').toLowerCase().replace(NON_LETTERS, '')
 }
 
@@ -41,12 +41,12 @@ export function lettersOnlyLower(s: string): string {
  *   "OP01-120" -> "op01120"
  *   "DON!!"    -> "don"
  */
-export function opcgIndexSlug(s: string): string {
+function opcgIndexSlug(s: string): string {
   return (s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '')
 }
 
 /** Extract the last non-empty path segment from a URL (yuyu-tei slug). */
-export function yuyuteiSlugFromUrl(url: string): string {
+function yuyuteiSlugFromUrl(url: string): string {
   if (!url) return ''
   try {
     const parts = url.split('/').filter(Boolean)

@@ -1324,6 +1324,7 @@ export default function DatabasePage() {
                             return (
                               <input
                                 type="checkbox"
+                                className="lp-checkbox lp-checkbox--md"
                                 aria-label={
                                   allChecked
                                     ? 'Deselect all visible cards'
@@ -1407,6 +1408,7 @@ export default function DatabasePage() {
                               >
                                 <input
                                   type="checkbox"
+                                  className="lp-checkbox"
                                   checked={!isExcluded}
                                   onChange={() => toggleExcludeIndex(idx)}
                                   aria-label={

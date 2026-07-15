@@ -1,5 +1,78 @@
 @import "tailwindcss";
 
+/* ─── Styled checkbox (matches the warm pastel theme) ───────────────────
+   Native checkboxes are tiny, low-contrast, and ignore the rest of the
+   page palette. Hide the default control and render a custom square
+   with our `--accent` warm-coral fill + a crisp tick SVG when checked.
+   Hover/indeterminate/focus all picked up via the :checked / :indeterminate
+   pseudo-classes on the input itself (no JS needed for state styling). */
+.lp-checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  cursor: pointer;
+  background: var(--bg-card);
+  border: 1.5px solid var(--border);
+  border-radius: 5px;
+  box-shadow: var(--shadow-sm);
+  transition: background-color 120ms ease, border-color 120ms ease,
+    box-shadow 120ms ease, transform 80ms ease;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+/* Tick \u2014 drawn with a CSS gradient trick (two crossed lines via
+   border-image is awkward; an inline SVG mask is cleaner). */
+.lp-checkbox:checked,
+.lp-checkbox:indeterminate {
+  background: var(--accent);
+  border-color: var(--accent-hover);
+}
+.lp-checkbox:checked::after,
+.lp-checkbox:indeterminate::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 14px 14px;
+}
+.lp-checkbox:checked::after {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23fff8f2' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='3.5,8.5 6.5,11.5 12.5,4.5'/></svg>");
+}
+.lp-checkbox:indeterminate::after {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23fff8f2' stroke-width='2.5' stroke-linecap='round'><line x1='4' y1='8' x2='12' y2='8'/></svg>");
+}
+.lp-checkbox:hover:not(:checked):not(:indeterminate) {
+  border-color: var(--accent);
+  background: var(--accent-light);
+}
+.lp-checkbox:active {
+  transform: scale(0.92);
+}
+.lp-checkbox:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-light);
+}
+.lp-checkbox:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Slightly larger variant used in the header row of the review table. */
+.lp-checkbox.lp-checkbox--md {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+}
+.lp-checkbox.lp-checkbox--md::after {
+  background-size: 16px 16px;
+}
+
 /* Prevent iOS Safari from auto-zooming when any form field receives focus.
    16px is Safari's threshold — below it, the field is "assumed too small to
    read" and Safari zooms the viewport to make it legible. */

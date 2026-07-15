@@ -1446,7 +1446,7 @@ export default function DatabasePage() {
                   <input
                     type="search"
                     className="form-input"
-                    placeholder="Filter by index, name, or rarity\u2026"
+                    placeholder="Filter by index, name, or rarity…"
                     value={reviewSearch}
                     onChange={e => setReviewSearch(e.target.value)}
                     style={{ flex: '1 1 220px', maxWidth: 320 }}
@@ -1504,7 +1504,7 @@ export default function DatabasePage() {
                     onClick={goBackFromReview}
                     disabled={importing}
                   >
-                    \u2190 Back
+                    ← Back
                   </button>
                   <button
                     type="button"
@@ -1516,7 +1516,7 @@ export default function DatabasePage() {
                     }
                   >
                     {importing
-                      ? 'Importing\u2026'
+                      ? 'Importing…'
                       : `Import ${importedCards.length - excludedIdx.size} card${
                           importedCards.length - excludedIdx.size === 1 ? '' : 's'
                         } to database`}

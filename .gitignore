@@ -37,16 +37,11 @@ __pycache__/
 supabase/.temp/
 
 # Data folder — never commit; lives only on the local machine.
-# Exception: the SNKRDUNK apparel-id mapping is committed so the
-# daily GitHub Actions scraper can read it. (Other files in data/ are
-# large or generated and stay local.)
 data/*
 !data/.gitkeep
-!data/master_snkrdunk.csv
 .github/*
 
-# Local scrape output (created by `python scripts/scrape_snkrdunk.py
-# --output <file>.csv` and by daily cron runs). Don't commit.
+# Local scrape output (any per-apparel CSV). Don't commit.
 snkrdunk_history.csv
 opcg-*.csv
 op06-119-*.csv

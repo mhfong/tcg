@@ -34,6 +34,20 @@ function isValidYuyuteiUrl(url: string): boolean {
 //   VITE_YUYUTEI_PARSE_URL=https://<project>.supabase.co/functions/v1/yuyutei-parse
 const PARSE_URL = import.meta.env.VITE_YUYUTEI_PARSE_URL as string | undefined
 
+// Substring match against any of the user-visible fields. Case-insensitive.
+// Used both by the review-table filter and by the "select all/none"
+// header checkbox (which only scopes to visible rows).
+function matchesReviewSearch(c: PreviewCard, q: string): boolean {
+  const needle = q.trim().toLowerCase()
+  if (!needle) return true
+  return (
+    (c.card_index ?? '').toLowerCase().includes(needle) ||
+    (c.card_name ?? '').toLowerCase().includes(needle) ||
+    (c.card_rarity ?? '').toLowerCase().includes(needle) ||
+    (c.card_series ?? '').toLowerCase().includes(needle)
+  )
+}
+
 export default function DatabasePage() {
   const { user } = useAuth()
   const [cards, setCards] = useState<CardDefinition[]>([])
@@ -66,8 +80,17 @@ export default function DatabasePage() {
   const [importRarities, setImportRarities] = useState<string[]>([])
   const [availableRarities, setAvailableRarities] = useState<string[]>([])
   const [importedCards, setImportedCards] = useState<PreviewCard[]>([])
+  // Indices into `importedCards` that the user has marked to skip.
+  // Review table lets the user click any row to remove it from the
+  // upcoming import. Excluded rows are visually muted.
+  const [excludedIdx, setExcludedIdx] = useState<Set<number>>(new Set())
   const [importing, setImporting] = useState(false)
+  // 'select' = choose series + rarities
+  // 'preview' = review the parsed cards and deselect any to skip
   const [importStage, setImportStage] = useState<'select' | 'preview'>('select')
+  // Free-text filter shown above the review table so the user can
+  // quickly find a card to drop (e.g. search by card_index or name).
+  const [reviewSearch, setReviewSearch] = useState('')
   const importDialogRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -247,6 +270,9 @@ export default function DatabasePage() {
         }
       }
       setImportedCards(collected)
+      // A new preview run means a fresh exclude-list.
+      setExcludedIdx(new Set())
+      setReviewSearch('')
       setImportStage('preview')
     } catch (e) {
       setError(explainNetworkError(e))
@@ -261,12 +287,39 @@ export default function DatabasePage() {
     )
   }
 
+  function toggleExcludeIndex(idx: number) {
+    setExcludedIdx(prev => {
+      const next = new Set(prev)
+      if (next.has(idx)) next.delete(idx)
+      else next.add(idx)
+      return next
+    })
+  }
+
+  function setAllExcluded(visibleIdx: number[], exclude: boolean) {
+    setExcludedIdx(prev => {
+      const next = new Set(prev)
+      for (const i of visibleIdx) {
+        if (exclude) next.add(i)
+        else next.delete(i)
+      }
+      return next
+    })
+  }
+
+  function goBackFromReview() {
+    setImportStage('select')
+    // Keep excludedIdx + reviewSearch so the user can come back and tweak
+    // before importing; clearing only happens on a new preview run.
+  }
+
   async function handleImportAll() {
-    if (importedCards.length === 0) return
+    const included = importedCards.filter((_, i) => !excludedIdx.has(i))
+    if (included.length === 0) return
     setError(null)
     setImporting(true)
     try {
-      const rows = importedCards.map(c => ({
+      const rows = included.map(c => ({
         id: makeCardId({
           tcg_type: c.tcg_type,
           card_series: c.card_series,
@@ -297,9 +350,12 @@ export default function DatabasePage() {
         }
         return
       }
-      const count = importedCards.length
+      const count = rows.length
+      const skipped = importedCards.length - count
       setSuccess(
-        `Imported ${count} card${count === 1 ? '' : 's'} from ${(resolvedSeries || importSeries).toUpperCase()}.`,
+        `Imported ${count} card${count === 1 ? '' : 's'} from ${(resolvedSeries || importSeries).toUpperCase()}` +
+          (skipped > 0 ? ` (skipped ${skipped})` : '') +
+          '.',
       )
       setImportOpen(false)
       await loadCards()
@@ -1244,6 +1300,47 @@ export default function DatabasePage() {
                   <table className="data-table" style={{ minWidth: 600 }}>
                     <thead>
                       <tr>
+                        <th style={{ width: 36 }} aria-label="Include">
+                          {(() => {
+                            // Header checkbox reflects state of VISIBLE
+                            // (filtered) rows only \u2014 user can selectively
+                            // (un)check what they see and rely on the
+                            // filter to scope to the cards they care about.
+                            const visibleIdxs = importedCards
+                              .map((c, i) => ({ c, i }))
+                              .filter(({ c, i }) =>
+                                !excludedIdx.has(i) && matchesReviewSearch(c, reviewSearch),
+                              )
+                              .map(({ i }) => i)
+                            const excludedVisible = visibleIdxs.filter(i =>
+                              excludedIdx.has(i),
+                            )
+                            const allChecked =
+                              visibleIdxs.length > 0 &&
+                              excludedVisible.length === 0
+                            const someChecked =
+                              excludedVisible.length > 0 &&
+                              excludedVisible.length < visibleIdxs.length
+                            return (
+                              <input
+                                type="checkbox"
+                                aria-label={
+                                  allChecked
+                                    ? 'Deselect all visible cards'
+                                    : 'Select all visible cards'
+                                }
+                                checked={allChecked}
+                                ref={el => {
+                                  if (el) el.indeterminate = someChecked
+                                }}
+                                onChange={e =>
+                                  setAllExcluded(visibleIdxs, !e.target.checked)
+                                }
+                                style={{ cursor: 'pointer' }}
+                              />
+                            )
+                          })()}
+                        </th>
                         <th>TCG</th>
                         <th>Series</th>
                         <th>Card #</th>
@@ -1252,21 +1349,148 @@ export default function DatabasePage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {importedCards.map((c, idx) => (
-                        <tr key={idx}>
-                          <td>
-                            <span className={`tag tag-${c.tcg_type.toLowerCase()}`}>
-                              {c.tcg_type}
-                            </span>
-                          </td>
-                          <td>{c.card_series}</td>
-                          <td>{c.card_index}</td>
-                          <td>{c.card_rarity}</td>
-                          <td>{c.card_name || '—'}</td>
-                        </tr>
-                      ))}
+                      {(() => {
+                        // Filter rows by the search box (matches any of
+                        // card_index, card_name, rarity). Filtering does
+                        // NOT touch excludedIdx \u2014 it only hides rows.
+                        const filtered = importedCards
+                          .map((c, i) => ({ c, i }))
+                          .filter(({ c, i }) =>
+                            !excludedIdx.has(i) || matchesReviewSearch(c, reviewSearch),
+                          )
+                          .filter(({ c }) =>
+                            matchesReviewSearch(c, reviewSearch),
+                          )
+                        if (filtered.length === 0) {
+                          return (
+                            <tr>
+                              <td
+                                colSpan={6}
+                                style={{
+                                  textAlign: 'center',
+                                  padding: '2rem 1rem',
+                                  color: 'var(--text-secondary)',
+                                }}
+                              >
+                                No cards match your filter.
+                              </td>
+                            </tr>
+                          )
+                        }
+                        return filtered.map(({ c, idx }) => {
+                          const isExcluded = excludedIdx.has(idx)
+                          return (
+                            <tr
+                              key={idx}
+                              onClick={() => toggleExcludeIndex(idx)}
+                              style={{
+                                cursor: 'pointer',
+                                opacity: isExcluded ? 0.45 : 1,
+                                textDecoration: isExcluded
+                                  ? 'line-through'
+                                  : 'none',
+                                background: isExcluded
+                                  ? 'var(--bg-muted, rgba(0,0,0,0.04))'
+                                  : undefined,
+                                transition: 'opacity 120ms',
+                              }}
+                              title={
+                                isExcluded
+                                  ? 'Click to include this card'
+                                  : 'Click to skip this card'
+                              }
+                              data-excluded={isExcluded ? 'true' : 'false'}
+                            >
+                              <td
+                                onClick={e => e.stopPropagation()}
+                                style={{ textAlign: 'center' }}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={!isExcluded}
+                                  onChange={() => toggleExcludeIndex(idx)}
+                                  aria-label={
+                                    isExcluded ? 'Include card' : 'Skip card'
+                                  }
+                                />
+                              </td>
+                              <td>
+                                <span className={`tag tag-${c.tcg_type.toLowerCase()}`}>
+                                  {c.tcg_type}
+                                </span>
+                              </td>
+                              <td>{c.card_series}</td>
+                              <td>{c.card_index}</td>
+                              <td>{c.card_rarity}</td>
+                              <td>{c.card_name || '\u2014'}</td>
+                            </tr>
+                          )
+                        })
+                      })()}
                     </tbody>
                   </table>
+                </div>
+
+                {/* Search + counter row above the action buttons */}
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '0.75rem',
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <input
+                    type="search"
+                    className="form-input"
+                    placeholder="Filter by index, name, or rarity\u2026"
+                    value={reviewSearch}
+                    onChange={e => setReviewSearch(e.target.value)}
+                    style={{ flex: '1 1 220px', maxWidth: 320 }}
+                    aria-label="Filter review list"
+                  />
+                  <div
+                    style={{
+                      fontSize: '0.875rem',
+                      color: 'var(--text-secondary)',
+                      whiteSpace: 'nowrap',
+                    }}
+                    aria-live="polite"
+                  >
+                    {(() => {
+                      const included = importedCards.length - excludedIdx.size
+                      const total = importedCards.length
+                      return (
+                        <>
+                          <strong style={{ color: 'var(--text)' }}>{included}</strong>
+                          {' of '}
+                          <strong style={{ color: 'var(--text)' }}>{total}</strong>
+                          {' selected'}
+                          {excludedIdx.size > 0 && (
+                            <>
+                              {' \u2014 '}
+                              <button
+                                type="button"
+                                onClick={() => setExcludedIdx(new Set())}
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  padding: 0,
+                                  color: 'var(--accent)',
+                                  cursor: 'pointer',
+                                  textDecoration: 'underline',
+                                  font: 'inherit',
+                                }}
+                              >
+                                restore all
+                              </button>
+                            </>
+                          )}
+                        </>
+                      )
+                    })()}
+                  </div>
                 </div>
 
                 {error && <div className="form-alert form-alert--error">{error}</div>}
@@ -1275,20 +1499,25 @@ export default function DatabasePage() {
                   <button
                     type="button"
                     className="btn btn-ghost"
-                    onClick={() => setImportStage('select')}
+                    onClick={goBackFromReview}
                     disabled={importing}
                   >
-                    ← Back
+                    \u2190 Back
                   </button>
                   <button
                     type="button"
                     className="btn btn-primary"
                     onClick={handleImportAll}
-                    disabled={importing || importedCards.length === 0}
+                    disabled={
+                      importing ||
+                      importedCards.length - excludedIdx.size === 0
+                    }
                   >
                     {importing
-                      ? 'Importing…'
-                      : `Import ${importedCards.length} card${importedCards.length === 1 ? '' : 's'} to database`}
+                      ? 'Importing\u2026'
+                      : `Import ${importedCards.length - excludedIdx.size} card${
+                          importedCards.length - excludedIdx.size === 1 ? '' : 's'
+                        } to database`}
                   </button>
                 </div>
               </div>

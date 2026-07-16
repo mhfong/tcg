@@ -1,13 +1,19 @@
 // Supabase Edge Function: snkrdunk-meta
 //
 // Receives an apparel_id from the frontend, fetches the SNKRDUNK
-// product page server-side, parses out og:image / og:title / og:site_name
-// so the Validation subpage can render the SNKRDUNK product image
+// product page server-side, and parses the product title + image
+// so the Validation subpage can render the SNKRDUNK product scan
 // alongside the yuyu-tei front scan.
 //
 // CORS-safe: the browser cannot directly fetch snkrdunk.com without an
 // Access-Control-Allow-Origin header, but Deno's outbound fetch() is not
 // subject to that browser-only rule, so this function is the bridge.
+//
+// Image resolution order (parseProductImage below):
+//   1. <img class="…__mainImage…" src="…"> — the actual product scan.
+//      Promoted to ?size=l for the largest available variant.
+//   2. Any cdn.snkrdunk.com/upload_bg_removed/<id>.webp URL on the page.
+//   3. og:image (fallback for non-card products like sneakers).
 //
 // Request body (POST application/json):
 //   { "apparel_id": "128117" }
@@ -56,6 +62,50 @@ function parseOg(html: string, property: string): string {
   return m?.[1] ?? ""
 }
 
+/**
+ * Pick the product's front-scan image out of a SNKRDUNK page.
+ *
+ * snkrdunk.com sets `og:image` to its brand OGP collage, NOT to the
+ * product photo, so we have to find the product image another way.
+ *
+ * The product page renders the actual card scan inside an `<img>`
+ * whose CSS-module class is `__mainImage` (loader-class hash, but
+ * the `__mainImage` suffix is stable across the site). It always
+ * comes from `cdn.snkrdunk.com/upload_bg_removed/<id>.webp` and
+ * supports a `?size=l|m|s` query to control dimensions.
+ *
+ * As a final fallback we use `og:image` (which works for non-card
+ * products like sneakers, where the upload_bg_removed mainImage
+ * path doesn't apply).
+ */
+function parseProductImage(html: string): string {
+  // 1. Main product image — best signal. Match any <img … class="…__mainImage…" …>
+  //    and pull its src. We allow any attribute order by looking for the
+  //    class containing "mainImage" and then capture the src of the same tag.
+  const mainImgRe = /<img\b[^>]*\bclass=["'][^"']*mainImage[^"']*["'][^>]*\bsrc=["']([^"']+)["']/i
+  const mainImgRev = /<img\b[^>]*\bsrc=["']([^"']+)["'][^>]*\bclass=["'][^"']*mainImage[^"']*["']/i
+  let m = html.match(mainImgRe) ?? html.match(mainImgRev)
+  if (m) {
+    // Up-convert to the largest available size (~3-4× bigger payload).
+    return m[1].replace(/\?size=[a-z]+$/i, "?size=l")
+  }
+  // 2. Any upload_bg_removed image URL on the page (still typically a card
+  //    scan). Pick the largest.
+  const allBg = [
+    ...html.matchAll(
+      /(?:https?:)?\/\/cdn\.snkrdunk\.com\/upload_bg_removed\/[A-Za-z0-9_-]+\.webp(?:\?size=[a-z]+)?/g,
+    ),
+  ].map(x => x[0])
+  if (allBg.length > 0) {
+    // Prefer the longest / most likely to be the largest. Promote to size=l.
+    const longest = allBg.reduce((a, b) => (b.length > a.length ? b : a))
+    const normalized = longest.startsWith("//") ? "https:" + longest : longest
+    return normalized.replace(/\?size=[a-z]+$/i, "?size=l")
+  }
+  // 3. Fallback to og:image (covers non-card products).
+  return parseOg(html, "image")
+}
+
 async function fetchOgMeta(apparel_id: string): Promise<{
   apparel_id: string
   title: string
@@ -82,7 +132,7 @@ async function fetchOgMeta(apparel_id: string): Promise<{
     return {
       apparel_id,
       title: parseOg(html, "title"),
-      image: parseOg(html, "image"),
+      image: parseProductImage(html),
       brand: parseOg(html, "site_name"),
       fetched: true,
     }

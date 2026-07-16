@@ -125,10 +125,13 @@ export default function DatabaseValidationPage() {
   }, [load])
 
   // ─── Filter pipeline ──────────────────────────────────────────────────────
+  // Each entry carries the card's original position in `rows` so the cursor
+  // (which indexes `rows`, not `filtered`) stays stable across filter changes.
   const filtered = useMemo(() => {
     const q = searchTerm.trim().toLowerCase()
     return rows
-      .filter(r => {
+      .map((r, originalIdx) => ({ r, originalIdx }))
+      .filter(({ r }) => {
         if (filter === 'unverified' && r.verify_status !== null) return false
         if (filter === 'verified' && r.verify_status !== 'verified') return false
         if (filter === 'rejected' && r.verify_status !== 'rejected') return false
@@ -141,8 +144,6 @@ export default function DatabaseValidationPage() {
           (r.snkrdunk_apparel_id ?? '').includes(q)
         )
       })
-      .map((r, i) => ({ r, i: rows.indexOf(r) })) // preserve original idx for cursor
-      .map(x => x)
   }, [rows, filter, searchTerm])
 
   // After filter changes, clamp the cursor to a valid position.
@@ -151,8 +152,8 @@ export default function DatabaseValidationPage() {
       if (cursor !== 0) setCursor(0)
       return
     }
-    const currentInFiltered = filtered.findIndex(x => x.i === cursor)
-    if (currentInFiltered === -1) setCursor(filtered[0].i)
+    const currentInFiltered = filtered.findIndex(x => x.originalIdx === cursor)
+    if (currentInFiltered === -1) setCursor(filtered[0].originalIdx)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter, searchTerm])
 
@@ -189,10 +190,10 @@ export default function DatabaseValidationPage() {
   useEffect(() => {
     // Warm-ahead the next 3 cards
     if (filtered.length < 2) return
-    const myIdx = filtered.findIndex(x => x.i === cursor)
+    const myIdx = filtered.findIndex(x => x.originalIdx === cursor)
     if (myIdx === -1) return
     for (let off = 1; off <= 3 && myIdx + off < filtered.length; off++) {
-      const next = rows[filtered[myIdx + off].i]
+      const next = rows[filtered[myIdx + off].originalIdx]
       if (next?.snkrdunk_apparel_id) warmAhead(next.snkrdunk_apparel_id)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -288,25 +289,25 @@ export default function DatabaseValidationPage() {
 
   function goTo(delta: number) {
     if (filtered.length === 0) return
-    const myIdx = filtered.findIndex(x => x.i === cursor)
+    const myIdx = filtered.findIndex(x => x.originalIdx === cursor)
     const base = myIdx === -1 ? 0 : myIdx
     const nextIdx = Math.min(filtered.length - 1, Math.max(0, base + delta))
-    setCursor(filtered[nextIdx].i)
+    setCursor(filtered[nextIdx].originalIdx)
   }
 
   function goToNextUnverified() {
     if (filtered.length === 0) return
-    const myIdx = filtered.findIndex(x => x.i === cursor)
+    const myIdx = filtered.findIndex(x => x.originalIdx === cursor)
     const base = myIdx === -1 ? -1 : myIdx
     for (let off = 1; base + off < filtered.length; off++) {
-      const cand = rows[filtered[base + off].i]
+      const cand = rows[filtered[base + off].originalIdx]
       if (cand.verify_status === null) {
-        setCursor(filtered[base + off].i)
+        setCursor(filtered[base + off].originalIdx)
         return
       }
     }
     // No more unverified in the current filter; just advance by 1.
-    if (base + 1 < filtered.length) setCursor(filtered[base + 1].i)
+    if (base + 1 < filtered.length) setCursor(filtered[base + 1].originalIdx)
   }
 
   // ─── Render helpers ───────────────────────────────────────────────────────
@@ -388,7 +389,7 @@ export default function DatabaseValidationPage() {
         <div style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
           {filtered.length === 0
             ? 'no matches'
-            : `${filtered.findIndex(x => x.i === cursor) + 1} / ${filtered.length}`}
+            : `${filtered.findIndex(x => x.originalIdx === cursor) + 1} / ${filtered.length}`}
         </div>
       </div>
 
@@ -437,7 +438,7 @@ export default function DatabaseValidationPage() {
                 type="button"
                 className="btn btn-ghost"
                 onClick={() => goTo(-1)}
-                disabled={filtered.findIndex(x => x.i === cursor) <= 0}
+                disabled={filtered.findIndex(x => x.originalIdx === cursor) <= 0}
               >
                 ←
               </button>
@@ -454,7 +455,7 @@ export default function DatabaseValidationPage() {
                 className="btn btn-ghost"
                 onClick={() => goTo(1)}
                 disabled={
-                  filtered.findIndex(x => x.i === cursor) >= filtered.length - 1
+                  filtered.findIndex(x => x.originalIdx === cursor) >= filtered.length - 1
                 }
               >
                 »

@@ -40,16 +40,54 @@ function snkrdunkProductUrl(apparel_id: string): string {
   return `https://snkrdunk.com/apparels/${apparel_id}`
 }
 
-/** Fetch the SNKRDUNK og:image + og:title for an apparel_id. We hit
- * the public HTML page (no auth required) and parse the OG tags.
- * If the fetch fails, the page degrades gracefully to a "no image"
- * placeholder. */
+/** Fetch the SNKRDUNK og:image + og:title for an apparel_id.
+ *
+ * snkrdunk.com does not return CORS headers, so the browser can't
+ * directly fetch the page. We instead call our Supabase Edge Function
+ * `snkrdunk-meta` (see supabase/functions/snkrdunk-meta/index.ts) which
+ * performs the server-side fetch and returns a small JSON.
+ *
+ * If VITE_SNKRDUNK_META_URL is unset, fall back to a direct fetch —
+ * CORS will block it in the browser and the SNKRDUNK side will show
+ * a "no image" placeholder, but no page crash.
+ */
 async function fetchSnkrdunkMeta(apparel_id: string): Promise<SnkrdunkMetadata> {
+  const metaUrl = (import.meta.env.VITE_SNKRDUNK_META_URL ?? '').trim()
+  if (metaUrl) {
+    try {
+      const anonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY ?? '').trim()
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (anonKey) {
+        headers['apikey'] = anonKey
+        headers['Authorization'] = `Bearer ${anonKey}`
+      }
+      const r = await fetch(metaUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ apparel_id }),
+        cache: 'no-store',
+      })
+      if (!r.ok) {
+        return { apparel_id, title: '', image: '', brand: '', fetched: false }
+      }
+      const data = (await r.json()) as Partial<SnkrdunkMetadata>
+      return {
+        apparel_id,
+        title: data.title ?? '',
+        image: data.image ?? '',
+        brand: data.brand ?? '',
+        fetched: data.fetched ?? true,
+      }
+    } catch {
+      return { apparel_id, title: '', image: '', brand: '', fetched: false }
+    }
+  }
+  // Fallback: try a direct fetch (CORS will block in the browser, but
+  // this path is used in tests and in environments that proxy through).
   const url = snkrdunkProductUrl(apparel_id)
   try {
     const r = await fetch(url, {
       headers: { Accept: 'text/html' },
-      // No credentials. Public page.
       cache: 'no-store',
     })
     if (!r.ok) {

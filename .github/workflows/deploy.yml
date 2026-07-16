@@ -37,6 +37,11 @@ jobs:
           # Optional: yuyu-tei parser URL. Falls back to URL-only local
           # parser in DatabasePage.tsx when unset.
           VITE_YUYUTEI_PARSE_URL: ${{ secrets.VITE_YUYUTEI_PARSE_URL }}
+          # Optional: SNKRDUNK og-meta proxy URL. Falls back to a
+          # direct fetch (which will fail with CORS in the browser)
+          # when unset, so the Validation subpage degrades to a "no
+          # image" placeholder on the SNKRDUNK side.
+          VITE_SNKRDUNK_META_URL: ${{ secrets.VITE_SNKRDUNK_META_URL }}
         run: npm run build
 
       - uses: actions/configure-pages@v4

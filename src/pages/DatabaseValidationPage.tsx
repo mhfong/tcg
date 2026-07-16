@@ -42,73 +42,56 @@ function snkrdunkProductUrl(apparel_id: string): string {
 
 /** Fetch the SNKRDUNK og:image + og:title for an apparel_id.
  *
- * snkrdunk.com does not return CORS headers, so the browser can't
- * directly fetch the page. We instead call our Supabase Edge Function
- * `snkrdunk-meta` (see supabase/functions/snkrdunk-meta/index.ts) which
- * performs the server-side fetch and returns a small JSON.
+ * Snkrdunk.com does not return CORS headers, so we cannot fetch the
+ * page directly from the browser. We ALWAYS POST to our Supabase Edge
+ * Function (`snkrdunk-meta`, see supabase/functions/snkrdunk-meta/index.ts)
+ * which performs the server-side fetch and returns parsed
+ * og:image / og:title / og:site_name.
  *
- * If VITE_SNKRDUNK_META_URL is unset, fall back to a direct fetch —
- * CORS will block it in the browser and the SNKRDUNK side will show
- * a "no image" placeholder, but no page crash.
+ * URL resolution order:
+ *   1. `VITE_SNKRDUNK_META_URL` if set (allows overriding to a
+ *      local proxy during dev).
+ *   2. `<VITE_SUPABASE_URL>/functions/v1/snkrdunk-meta` (the standard
+ *      Supabase Edge Function URL).
+ *
+ * The Edge Function is deployed with `--no-verify-jwt`, so JWT
+ * verification is off; we still pass `apikey: VITE_SUPABASE_ANON_KEY`
+ * so Supabase can apply the usual anonymous-role rate limits.
  */
 async function fetchSnkrdunkMeta(apparel_id: string): Promise<SnkrdunkMetadata> {
-  const metaUrl = (import.meta.env.VITE_SNKRDUNK_META_URL ?? '').trim()
-  if (metaUrl) {
-    try {
-      const anonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY ?? '').trim()
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-      if (anonKey) {
-        headers['apikey'] = anonKey
-        headers['Authorization'] = `Bearer ${anonKey}`
-      }
-      const r = await fetch(metaUrl, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ apparel_id }),
-        cache: 'no-store',
-      })
-      if (!r.ok) {
-        return { apparel_id, title: '', image: '', brand: '', fetched: false }
-      }
-      const data = (await r.json()) as Partial<SnkrdunkMetadata>
-      return {
-        apparel_id,
-        title: data.title ?? '',
-        image: data.image ?? '',
-        brand: data.brand ?? '',
-        fetched: data.fetched ?? true,
-      }
-    } catch {
-      return { apparel_id, title: '', image: '', brand: '', fetched: false }
-    }
+  const explicitUrl = (
+    import.meta.env.VITE_SNKRDUNK_META_URL as string | undefined
+  )?.trim()
+  const baseUrl =
+    explicitUrl ||
+    ((import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim() ?? '')
+      .replace(/\/+$/, '') +
+      '/functions/v1/snkrdunk-meta'
+
+  const anonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined)?.trim() ?? ''
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (anonKey) {
+    headers['apikey'] = anonKey
+    headers['Authorization'] = `Bearer ${anonKey}`
   }
-  // Fallback: try a direct fetch (CORS will block in the browser, but
-  // this path is used in tests and in environments that proxy through).
-  const url = snkrdunkProductUrl(apparel_id)
+
   try {
-    const r = await fetch(url, {
-      headers: { Accept: 'text/html' },
+    const r = await fetch(baseUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ apparel_id }),
       cache: 'no-store',
     })
     if (!r.ok) {
       return { apparel_id, title: '', image: '', brand: '', fetched: false }
     }
-    const html = await r.text()
-    const ogTitle =
-      html.match(/<meta\s+property=["']og:title["']\s+content=["']([^"']+)["']/i)?.[1] ??
-      ''
-    const ogImage =
-      html.match(/<meta\s+property=["']og:image["']\s+content=["']([^"']+)["']/i)?.[1] ??
-      ''
-    const ogSite =
-      html.match(/<meta\s+property=["']og:site_name["']\s+content=["']([^"']+)["']/i)?.[1] ??
-      ''
+    const data = (await r.json()) as Partial<SnkrdunkMetadata>
     return {
       apparel_id,
-      title: ogTitle || '',
-      image: ogImage || '',
-      brand: ogSite || '',
-      fetched: true,
+      title: data.title ?? '',
+      image: data.image ?? '',
+      brand: data.brand ?? '',
+      fetched: data.fetched ?? true,
     }
   } catch {
     return { apparel_id, title: '', image: '', brand: '', fetched: false }

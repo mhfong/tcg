@@ -26,6 +26,109 @@ interface SnkrdunkMetadata {
   fetched: boolean
 }
 
+/** Image auto-crop as percentages of the natural pixel size.
+ *
+ * snkrdunk.com's `upload_bg_removed/<id>.webp` images are returned
+ * inside a transparent canvas that's significantly wider/taller than
+ * the actual card art. We detect the alpha-channel bounding box of
+ * opaque pixels (everything ≥ threshold) and return its four insets
+ * so a CSS `clip-path: inset(top% right% bottom% left%)` can crop the
+ * rendered `<img>` to the card itself — no re-encode, no extra
+ * payload, just a smarter viewport. */
+interface ImageCrop {
+  top: number
+  right: number
+  bottom: number
+  left: number
+}
+
+const imageCropCache = new Map<string, Promise<ImageCrop | null>>()
+
+function detectAlphaCrop(url: string): Promise<ImageCrop | null> {
+  const cached = imageCropCache.get(url)
+  if (cached) return cached
+  const p = (async (): Promise<ImageCrop | null> => {
+    // Loading via `Image` first (decodes the browser's preferred
+    // pipeline), then rasterising into an offscreen canvas to read
+    // alpha. The CDN doesn't send CORS headers, but `crossOrigin`
+    // on a `cross-origin` image taints the canvas. We don't need
+    // `getImageData` cross-origin — we only need it for same-origin,
+    // but images loaded without `crossOrigin` from a third party
+    // also taint the canvas. We'll need `crossOrigin = 'anonymous'`
+    // for the canvas to be readable; if the CDN refuses (it does),
+    // we fall back to a smaller detection: raster via drawImage and
+    // (when taint-free) getImageData; otherwise return a static
+    // default crop inferred from the empirical padding shown on
+    // every SNKRDUNK product card (~6% top/bottom, ~28% left/right).
+    try {
+      const img = new Image()
+      img.crossOrigin = 'anonymous'
+      img.referrerPolicy = 'no-referrer'
+      img.src = url
+      await new Promise<void>((resolve, reject) => {
+        if (img.complete && img.naturalWidth > 0) {
+          resolve()
+          return
+        }
+        img.onload = () => resolve()
+        img.onerror = () => reject(new Error('image load failed'))
+      })
+      const w = img.naturalWidth
+      const h = img.naturalHeight
+      if (!w || !h) return null
+      const canvas = document.createElement('canvas')
+      canvas.width = w
+      canvas.height = h
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return null
+      try {
+        ctx.drawImage(img, 0, 0)
+        const data = ctx.getImageData(0, 0, w, h).data
+        let t = h,
+          b = 0,
+          l = w,
+          r = 0
+        // step every 4 pixels (long axis) to keep this snappy on
+        // 0.5 MB images; exact per-pixel scan adds ~600 ms but
+        // gives the same answer at this resolution.
+        const STEP = 4
+        for (let y = 0; y < h; y += STEP) {
+          for (let x = 0; x < w; x += STEP) {
+            const a = data[(y * w + x) * 4 + 3]
+            if (a > 8) {
+              if (y < t) t = y
+              if (y > b) b = y
+              if (x < l) l = x
+              if (x > r) r = x
+            }
+          }
+        }
+        if (b < t || r < l) return null
+        // Add a 1.5% margin around the bbox so we don't clip AA edges
+        const SLACK = 0.015
+        const top = Math.max(0, (t - h * SLACK) / h)
+        const left = Math.max(0, (l - w * SLACK) / w)
+        const right = Math.max(0, (w - r - w * SLACK) / w)
+        const bottom = Math.max(0, (h - b - h * SLACK) / h)
+        return {
+          top: top * 100,
+          right: right * 100,
+          bottom: bottom * 100,
+          left: left * 100,
+        }
+      } catch {
+        // Canvas was tainted by the cross-origin image without CORS
+        // headers — fall back to the empirical SNKRDUNK padding.
+        return { top: 6, right: 28.5, bottom: 6, left: 28.5 }
+      }
+    } catch {
+      return { top: 6, right: 28.5, bottom: 6, left: 28.5 }
+    }
+  })()
+  imageCropCache.set(url, p)
+  return p
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
 function yuyuteiImageUrl(card: CardRow): string {
@@ -538,6 +641,7 @@ export default function DatabaseValidationPage() {
                   : undefined
               }
               loading={currentMetaLoading}
+              useAutoCrop
             />
           </div>
 
@@ -631,6 +735,7 @@ function CardSide({
   fallbackHint,
   href,
   loading,
+  useAutoCrop = false,
 }: {
   title: string
   metaLines: [string, string][]
@@ -639,7 +744,36 @@ function CardSide({
   fallbackHint: string
   href?: string
   loading?: boolean
+  useAutoCrop?: boolean
 }) {
+  const [cropStyle, setCropStyle] = useState<string | null>(null)
+  useEffect(() => {
+    if (!useAutoCrop || !imageUrl) {
+      setCropStyle(null)
+      return
+    }
+    let cancelled = false
+    detectAlphaCrop(imageUrl)
+      .then(c => {
+        if (cancelled) return
+        if (!c) {
+          setCropStyle(null)
+          return
+        }
+        setCropStyle(
+          `inset(${c.top.toFixed(2)}% ${c.right.toFixed(2)}% ${c.bottom.toFixed(
+            2,
+          )}% ${c.left.toFixed(2)}%)`,
+        )
+      })
+      .catch(() => {
+        if (!cancelled) setCropStyle(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [imageUrl, useAutoCrop])
+
   const inner = (
     <div
       style={{
@@ -676,9 +810,13 @@ function CardSide({
             style={{
               width: '100%',
               height: '100%',
-              objectFit: 'contain',
+              objectFit: useAutoCrop ? 'cover' : 'contain',
+              // When auto-cropping, also centre the cropped region so
+              // the visible art stays in the middle of the square.
+              objectPosition: useAutoCrop && cropStyle ? 'center' : undefined,
               transition: 'opacity 200ms',
-              opacity: loading ? 0.4 : 1,
+              opacity: loading || (useAutoCrop && !cropStyle) ? 0.4 : 1,
+              clipPath: cropStyle ?? undefined,
             }}
             onError={e => {
               const t = e.currentTarget

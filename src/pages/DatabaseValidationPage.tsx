@@ -839,23 +839,14 @@ function CardSide({
               style={
                 cropStyle
                   ? (() => {
-                      // cropStyle is `inset(t% r% b% l%)`. We translate
-                      // the image so its visible (cropped) content lands
-                      // at the centre of the container, then scale it so
-                      // that the smaller of the cropped (visible) width /
-                      // height fills the full container, while keeping the
-                      // other axis within it.
-                      //
-                      // The CSS we eventually want is:
-                      //   width:        100% / (1 - left% - right%) of the container
-                      //                  = same as if we set
-                      //                  `width: calc(100% / (1 - .06 - .06)) = 1.136`
-                      //   height:       same calc
-                      //   object-fit:   cover on the natural sized image so
-                      //                  the container fills uniformly.
-                      //
-                      // We parse t/r/b/l from the inset(…) string we built
-                      // in JS so we don't have to plumb additional state.
+                      // cropStyle is `inset(t% r% b% l%)`. The values
+                      // stored are already percentages (0-100), so we
+                      // use them directly in the CSS percentages below.
+                      // We translate the image so its visible (cropped)
+                      // region lands at the centre of the container,
+                      // then scale it so that the smaller of the
+                      // cropped (visible) width / height fills the full
+                      // container, keeping the other axis within it.
                       const m = cropStyle.match(
                         /inset\(([\d.]+)% ([\d.]+)% ([\d.]+)% ([\d.]+)%\)/,
                       )
@@ -864,19 +855,17 @@ function CardSide({
                       const r = parseFloat(m[2])
                       const b = parseFloat(m[3])
                       const l = parseFloat(m[4])
-                      const visibleW = 1 - l - r // 0-1
-                      const visibleH = 1 - t - b
-                      const scaleX = 1 / Math.max(visibleW, 0.1)
-                      const scaleY = 1 / Math.max(visibleH, 0.1)
+                      const visibleWF = 1 - (l + r) / 100 // 0-1
+                      const visibleHF = 1 - (t + b) / 100
+                      const scaleX = 1 / Math.max(visibleWF, 0.1)
+                      const scaleY = 1 / Math.max(visibleHF, 0.1)
                       const scale = Math.max(scaleX, scaleY)
-                      // Anchor the centre of the image's visible region to
-                      // (50%, 50%) of the container.
                       return {
                         position: 'absolute',
-                        left: `${l * 100}%`,
-                        top: `${t * 100}%`,
-                        width: `${(1 - l - r) * 100}%`,
-                        height: `${(1 - t - b) * 100}%`,
+                        left: `${l}%`,
+                        top: `${t}%`,
+                        width: `${visibleWF * 100}%`,
+                        height: `${visibleHF * 100}%`,
                         transform: `scale(${scale})`,
                         transformOrigin: 'center',
                         opacity: loading ? 0.4 : 1,

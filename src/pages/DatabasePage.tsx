@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import type { CardDefinition } from '../lib/types'
@@ -540,6 +541,9 @@ export default function DatabasePage() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <Link to="/database/validation" className="btn btn-ghost">
+            Validate mappings
+          </Link>
           <button
             className="btn btn-ghost"
             onClick={openImport}

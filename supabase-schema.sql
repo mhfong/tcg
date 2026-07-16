@@ -20,6 +20,11 @@ CREATE TABLE IF NOT EXISTS master_table (
   -- SNKRDUNK apparel id (e.g. '515454'). Discovered lazily by the daily scraper
   -- and cached here so the next run skips the discovery step.
   snkrdunk_apparel_id TEXT,
+  -- Validation subpage on /database/validation. Set by the human after
+  -- they confirm the mapping is correct against the live SNKRDUNK page.
+  verified_at     TIMESTAMPTZ NULL,
+  verify_status   TEXT NULL
+    CHECK (verify_status IS NULL OR verify_status IN ('verified', 'rejected')),
   created_at TIMESTAMPTZ DEFAULT now()
 );
 GRANT SELECT, INSERT, UPDATE, DELETE ON master_table TO authenticated;
@@ -27,6 +32,11 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON master_table TO service_role;
 
 CREATE INDEX IF NOT EXISTS idx_master_table_snkrdunk_apparel
   ON master_table(snkrdunk_apparel_id) WHERE snkrdunk_apparel_id IS NOT NULL;
+
+-- Validation queue: cards with apparel_id but no human verdict yet
+CREATE INDEX IF NOT EXISTS idx_master_table_verify_queue
+  ON master_table (snkrdunk_apparel_id)
+  WHERE snkrdunk_apparel_id IS NOT NULL AND verify_status IS NULL;
 
 -- 2. Price history (populated by scraper)
 --

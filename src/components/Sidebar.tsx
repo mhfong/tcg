@@ -71,18 +71,29 @@ function DatabaseIcon(props: SVGProps<SVGSVGElement>) {
   )
 }
 
+function ValidationIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M12 3.5 4.5 6.2v5.6c0 4.4 3.2 7.6 7.5 8.7 4.3-1.1 7.5-4.3 7.5-8.7V6.2L12 3.5Z" />
+      <path d="m8.5 12.3 2.4 2.4 4.6-4.6" />
+    </svg>
+  )
+}
+
 const desktopNavItems: NavItem[] = [
   { to: '/', label: 'Dashboard', Icon: DashboardIcon, end: true },
   { to: '/watchlist', label: 'Watchlist', Icon: WatchlistIcon },
   { to: '/transactions', label: 'Transactions', Icon: TransactionsIcon },
   { to: '/inventory', label: 'Inventory', Icon: InventoryIcon },
   { to: '/database', label: 'Database', Icon: DatabaseIcon },
+  { to: '/database/validation', label: 'Validation', Icon: ValidationIcon },
   { to: '/settings', label: 'Settings', Icon: SettingsIcon },
 ]
 
 const mobileNavItems: NavItem[] = [
   { to: '/settings', label: 'Settings', Icon: SettingsIcon },
   { to: '/database', label: 'Database', Icon: DatabaseIcon },
+  { to: '/database/validation', label: 'Validation', Icon: ValidationIcon },
   { to: '/transactions', label: 'Transactions', Icon: TransactionsIcon },
   { to: '/inventory', label: 'Inventory', Icon: InventoryIcon },
   { to: '/watchlist', label: 'Watchlist', Icon: WatchlistIcon },

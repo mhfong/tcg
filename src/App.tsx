@@ -8,6 +8,7 @@ import TransactionPage from './pages/TransactionPage'
 import InventoryPage from './pages/InventoryPage'
 import SettingsPage from './pages/SettingsPage'
 import DatabasePage from './pages/DatabasePage'
+import DatabaseValidationPage from './pages/DatabaseValidationPage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
@@ -41,6 +42,7 @@ function AppRoutes() {
         <Route path="/transactions" element={<TransactionPage />} />
         <Route path="/inventory" element={<InventoryPage />} />
         <Route path="/database" element={<DatabasePage />} />
+        <Route path="/database/validation" element={<DatabaseValidationPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" />} />

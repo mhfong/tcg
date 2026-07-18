@@ -313,16 +313,20 @@ export default function DatabaseValidationPage() {
       })
   }, [rows, filter, searchTerm])
 
-  // After filter changes, clamp the cursor to a valid position.
+  // After the filter or rows change (e.g. user marked a card verified
+  // so it dropped out of the "Unverified" filter), clamp the cursor to
+  // a position that still passes the active filter. This keeps the
+  // detail panel in sync — if the cursor's row is no longer in the
+  // filtered list, jump to the first filtered row.
   useEffect(() => {
     if (filtered.length === 0) {
       if (cursor !== 0) setCursor(0)
       return
     }
-    const currentInFiltered = filtered.findIndex(x => x.originalIdx === cursor)
-    if (currentInFiltered === -1) setCursor(filtered[0].originalIdx)
+    const cursorInFiltered = filtered.some(e => e.originalIdx === cursor)
+    if (!cursorInFiltered) setCursor(filtered[0].originalIdx)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filter, searchTerm])
+  }, [filter, searchTerm, rows])
 
   // ─── Fetch SNKRDUNK metadata for the current card (and warm-ahead)
   const warmAhead = (a: string) => {
@@ -346,7 +350,25 @@ export default function DatabaseValidationPage() {
 
   // Fetch the meta for the currently displayed card, and warm-ahead the
   // next one so navigation feels instant.
-  const currentCard = rows[cursor] ?? null
+  // The card currently displayed in the detail panel. We derive it
+  // from `filtered` (not `rows`) so the detail panel always respects
+  // the active filter — when the user picks "Unverified" and no cards
+  // match, the panel hides (currentCard === null) instead of showing a
+  // verified/rejected card from the unfiltered rows. The cursor itself
+  // stores an *index into rows*; we resolve it through filtered so the
+  // visible card is always the row at cursor, IF that row passes the
+  // current filter, else the first row that does.
+  const currentFilteredEntry = useMemo(() => {
+    if (filtered.length === 0) return null
+    const byOriginalIdx = new Map(filtered.map(e => [e.originalIdx, e]))
+    const direct = byOriginalIdx.get(cursor)
+    if (direct) return direct
+    // Cursor points at a card that's been filtered out (e.g. user
+    // confirmed a card and the filter is "Unverified"). Fall back to
+    // the first card in the filtered list.
+    return filtered[0]
+  }, [filtered, cursor])
+  const currentCard = currentFilteredEntry?.r ?? null
   useEffect(() => {
     if (!currentCard?.snkrdunk_apparel_id) return
     if (!metaCache[currentCard.snkrdunk_apparel_id]) {

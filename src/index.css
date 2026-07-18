@@ -399,7 +399,11 @@ select.input { appearance: none; cursor: pointer; }
   gap: 0;
   background: rgba(255,248,242,0.94);
   border: 1px solid var(--border);
-  border-radius: 22px;
+  /* 22px was clipping the rightmost cell content ("Transactions"
+     showed as "Transactior" with a clipped right edge). Reduce to
+     12px — softer corners, but the roundness doesn't reach the
+     cell content on narrow phones. */
+  border-radius: 12px;
   backdrop-filter: blur(18px);
   box-shadow: var(--shadow-xl);
 }
@@ -412,7 +416,7 @@ select.input { appearance: none; cursor: pointer; }
   justify-content: flex-end;
   gap: 0.1rem;
   padding: 0.08rem 0.04rem 0;
-  border-radius: 14px;
+  border-radius: 8px;
   text-decoration: none;
   color: var(--text-secondary);
   /* Mobile nav has 7 labels in a row across a 360-414px viewport.

@@ -321,14 +321,15 @@ export default function DatabaseValidationPage() {
   // SNKRDUNK. We surface this count in a banner so the user
   // knows why their newly-added card isn't appearing.
   const [pendingDiscoveryCount, setPendingDiscoveryCount] = useState(0)
-  // Card IDs of the pending-discovery rows. We auto-enqueue these
-  // in a separate effect so the GitHub Actions cron picks them up.
+  // Card IDs of the rows that still need SNKRDUNK discovery. These
+  // are only sent to discover-trigger after the user explicitly
+  // confirms via the Validation-page button.
   const [pendingDiscoveryIds, setPendingDiscoveryIds] = useState<string[]>([])
-  // Set to true once we've kicked off discover-trigger for the
-  // current page mount's pending IDs. We don't re-kick on every
-  // refresh — only the first time we see new pending IDs in this
-  // session.
-  const [discoverEnqueued, setDiscoverEnqueued] = useState(false)
+  // Tracks the in-flight state of the explicit "Discover now"
+  // button. This never auto-starts discovery on mount or polling —
+  // it only disables the button while the user-confirmed request is
+  // being sent.
+  const [discoverStarting, setDiscoverStarting] = useState(false)
   // discover_queue status counts (status → count). Used to render a
   // progress bar so the user knows how many cards the worker has
   // processed vs. still has to do.
@@ -474,6 +475,29 @@ export default function DatabaseValidationPage() {
     }
   }, [user])
 
+  const startDiscover = useCallback(async () => {
+    if (discoverStarting) return
+    if (pendingDiscoveryIds.length === 0) return
+    const count = pendingDiscoveryIds.length
+    const confirmed = window.confirm(
+      `Start SNKRDUNK discovery for ${count} card${count === 1 ? '' : 's'}?\n\n` +
+        'This will queue the GitHub Actions worker to search SNKRDUNK for the missing apparel_id values.',
+    )
+    if (!confirmed) return
+    setError(null)
+    setDiscoverStarting(true)
+    try {
+      const ok = await triggerDiscover(pendingDiscoveryIds)
+      if (!ok) {
+        setError('Failed to start SNKRDUNK discovery. Please try again.')
+        return
+      }
+      await load()
+    } finally {
+      setDiscoverStarting(false)
+    }
+  }, [discoverStarting, pendingDiscoveryIds, load])
+
   useEffect(() => {
     void load()
   }, [load])
@@ -517,29 +541,6 @@ export default function DatabaseValidationPage() {
       document.removeEventListener('visibilitychange', onVisibility)
     }
   }, [load, loading])
-
-  // When load() finds new pending-discovery rows, automatically
-  // enqueue them via the discover-trigger Edge Function. The
-  // .github/workflows/discover.yml cron picks them up within 5
-  // minutes and runs scripts/discover_snkrdunk_apparel_ids.py.
-  //
-  // Why fire-and-forget from the page? Two reasons:
-  //   1. Discover-script logic (Playwright + Pillow) doesn't fit in
-  //      a Deno Edge Function sandbox, so it must run elsewhere.
-  //   2. The page is the natural signal source — it's the only
-  //      place that already knows which cards lack apparel_ids.
-  //
-  // We only fire once per page mount (gated by `discoverEnqueued`).
-  // Refreshing the page resets the gate so a new batch gets
-  // re-enqueued (the Edge Function dedupes via the partial unique
-  // index, so this is idempotent).
-  useEffect(() => {
-    if (discoverEnqueued) return
-    if (pendingDiscoveryIds.length === 0) return
-    setDiscoverEnqueued(true)
-    void triggerDiscover(pendingDiscoveryIds)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingDiscoveryIds, discoverEnqueued])
 
   // ─── Filter pipeline ──────────────────────────────────────────────────────
   // Each entry carries the card's original position in `rows` so the cursor
@@ -958,12 +959,10 @@ const gridTemplateColumns =
         </div>
       )}
 
-      {/* Pending-discovery banner — surfaces cards that exist in
-          master_table but have no SNKRDUNK apparel_id yet. When the
-          page detects new pending rows, it auto-enqueues them via
-          the discover-trigger Edge Function; the GitHub Actions cron
-          (`.github/workflows/discover.yml`) picks them up within 5
-          minutes.
+        {/* Pending-discovery banner — surfaces cards that exist in
+          master_table but have no SNKRDUNK apparel_id yet. Discovery
+          is MANUAL only: the user must click the Validation-page
+          button and confirm before we call discover-trigger.
 
           The banner follows the site's warm-coral theme:
             - `lp-card` shell with `::before` gradient bar (matches
@@ -1001,6 +1000,8 @@ const gridTemplateColumns =
         const pctDone = total > 0 ? Math.round((visibleDone / total) * 100) : 0
         const pctFailed = total > 0 ? Math.round((visibleFailed / total) * 100) : 0
         const pctActive = 100 - pctDone - pctFailed
+        const queuedOrProcessing = queueStatus.pending + queueStatus.processing
+        const queuedLabelCount = queuedOrProcessing > 0 ? queuedOrProcessing : total
         return (
           <div
             className="lp-card"
@@ -1032,12 +1033,12 @@ const gridTemplateColumns =
                   borderRadius: '50%',
                   background: 'var(--accent-light)',
                   animation:
-                    queueStatus.processing > 0
+                    discoverStarting || queueStatus.processing > 0
                       ? 'lp-pulse 1.4s ease-in-out infinite'
                       : undefined,
                 }}
               >
-                {queueStatus.processing > 0 ? '⚙️' : '⏳'}
+                {discoverStarting || queueStatus.processing > 0 ? '⚙️' : '⏳'}
               </span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div
@@ -1047,10 +1048,12 @@ const gridTemplateColumns =
                     fontSize: '0.95rem',
                   }}
                 >
-                  {discoverEnqueued
-                    ? queueStatus.processing > 0
+                  {discoverStarting
+                    ? `Starting SNKRDUNK discovery for ${pendingDiscoveryCount} card${pendingDiscoveryCount === 1 ? '' : 's'}…`
+                    : queueStatus.processing > 0
                       ? `Discovering ${total} card${total === 1 ? '' : 's'} on SNKRDUNK…`
-                      : `Queued ${pendingDiscoveryCount} card${pendingDiscoveryCount === 1 ? '' : 's'} for SNKRDUNK lookup`
+                      : total > 0
+                        ? `Queued ${queuedLabelCount} card${queuedLabelCount === 1 ? '' : 's'} for SNKRDUNK lookup`
                     : `${pendingDiscoveryCount} card${pendingDiscoveryCount === 1 ? '' : 's'} need SNKRDUNK lookup`}
                 </div>
                 <div
@@ -1061,28 +1064,37 @@ const gridTemplateColumns =
                   }}
                 >
                   These cards have no <code>snkrdunk_apparel_id</code> yet.
-                  The GitHub Actions worker runs{' '}
-                  <code>scripts/discover_snkrdunk_apparel_ids.py</code>{' '}
-                  on them. They&rsquo;ll appear in the Unverified tab
-                  automatically once matched.
+                  {total > 0 || discoverStarting
+                    ? (
+                      <>
+                        {' '}The GitHub Actions worker is running{' '}
+                        <code>scripts/discover_snkrdunk_apparel_ids.py</code>{' '}
+                        on them. They&rsquo;ll appear in the Unverified tab once matched.
+                      </>
+                    )
+                    : (
+                      <>
+                        {' '}Click <strong>Discover now</strong> to confirm and queue{' '}
+                        <code>scripts/discover_snkrdunk_apparel_ids.py</code>{' '}
+                        for these cards.
+                      </>
+                    )}
                 </div>
               </div>
-              {!discoverEnqueued && (
+              {total === 0 && (
                 <button
                   type="button"
                   className="btn btn-primary"
-                  onClick={() => {
-                    setDiscoverEnqueued(true)
-                    void triggerDiscover(pendingDiscoveryIds)
-                  }}
+                  onClick={() => void startDiscover()}
+                  disabled={discoverStarting || pendingDiscoveryIds.length === 0}
                   style={{
                     fontSize: '0.8rem',
                     padding: '0.45rem 0.85rem',
                     flexShrink: 0,
                   }}
-                  title="Enqueue these card_ids so the GitHub Actions worker will discover their SNKRDUNK apparel_id"
+                  title="Confirm to queue these card_ids so the GitHub Actions worker will discover their SNKRDUNK apparel_id"
                 >
-                  Discover now
+                  {discoverStarting ? 'Starting…' : 'Discover now'}
                 </button>
               )}
             </div>

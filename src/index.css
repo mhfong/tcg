@@ -416,10 +416,13 @@ select.input { appearance: none; cursor: pointer; }
   text-decoration: none;
   color: var(--text-secondary);
   /* Mobile nav has 7 labels in a row across a 360-414px viewport.
-     At 0.6rem the longer labels ("Validation", "Transaction") get
-     clipped on narrow phones. Drop to 0.55rem (~8.8px) and tighten
-     letter-spacing so all 7 labels fit on a single line in one row. */
-  font-size: 0.55rem;
+     Even at 0.55rem, 'Transactions' overflows by ~0.3px on the
+     narrowest phones (where each cell is ~50px wide), causing the
+     trailing 's' to clip visually. Drop to 0.5rem (~8px) — still
+     readable — and we get ~2px of breathing room on every label.
+     text-overflow: clip (not ellipsis) — a partial glyph looks
+     worse than the full word at a smaller size. */
+  font-size: 0.5rem;
   font-weight: 700;
   letter-spacing: 0;
   line-height: 1;

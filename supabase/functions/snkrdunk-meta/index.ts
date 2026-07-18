@@ -146,6 +146,59 @@ async function handle(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: CORS })
   }
+  const url = new URL(req.url)
+
+  // Image-proxy route: GET /image?u=<absolute-url>
+  //
+  // The browser cannot read pixel data from a cross-origin image
+  // unless that image was served with `Access-Control-Allow-Origin`.
+  // cdn.snkrdunk.com does NOT return CORS headers, so we cannot
+  // run a canvas-based crop on the SNKRDUNK image directly. This
+  // route proxies the image bytes back through Supabase's edge,
+  // which DOES return CORS headers (see CORS constant above), so
+  // the frontend can draw the image to a canvas and read pixel
+  // data without tripping the browser's same-origin check.
+  //
+  // Cached by the browser/CDN with Cache-Control: public,
+  // max-age=86400 (1 day) — the SNKRDUNK product images rarely
+  // change, so a day of caching is safe and reduces load on the
+  // edge.
+  if (url.pathname.endsWith("/image") && req.method === "GET") {
+    const target = url.searchParams.get("u") ?? ""
+    if (!/^https?:\/\//.test(target)) {
+      return jsonResponse({ error: "u must be an http(s) URL" }, 400)
+    }
+    try {
+      const r = await fetch(target, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) " +
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+          "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+        },
+        redirect: "follow",
+      })
+      if (!r.ok) {
+        return jsonResponse({ error: `upstream ${r.status}` }, 502)
+      }
+      const body = await r.arrayBuffer()
+      const ct = r.headers.get("content-type") ?? "application/octet-stream"
+      return new Response(body, {
+        status: 200,
+        headers: {
+          "Content-Type": ct,
+          "Cache-Control": "public, max-age=86400",
+          ...CORS,
+        },
+      })
+    } catch (e) {
+      return jsonResponse(
+        { error: e instanceof Error ? e.message : String(e) },
+        502,
+      )
+    }
+  }
+
   if (req.method !== "POST") {
     return jsonResponse({ error: "Use POST" }, 405)
   }

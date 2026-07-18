@@ -40,6 +40,33 @@ function snkrdunkProductUrl(apparel_id: string): string {
 }
 
 /**
+ * Wrap a SNKRDUNK image URL in our Edge Function's CORS proxy.
+ *
+ * The browser refuses to read pixel data from a canvas that was
+ * drawn from a cross-origin image unless that image was served
+ * with `Access-Control-Allow-Origin`. cdn.snkrdunk.com does NOT
+ * return CORS headers, so our `trimWhiteBorders` canvas pass
+ * throws SecurityError on SNKRDUNK images. We work around this by
+ * routing the image through our `snkrdunk-meta` Edge Function,
+ * which adds proper CORS headers when proxying the bytes back.
+ *
+ * The proxy URL is `<edge>/image?u=<encoded-snkrdunk-url>`. The
+ * browser caches the bytes (Cache-Control: max-age=86400) so we
+ * only pay the proxy cost once per session.
+ */
+function snkrdunkProxiedImageUrl(rawUrl: string): string {
+  const baseUrl =
+    (
+      (import.meta.env.VITE_SNKRDUNK_META_URL as string | undefined)?.trim() ||
+      (
+        ((import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim() ??
+          '')
+      ).replace(/\/+$/, '') + '/functions/v1/snkrdunk-meta'
+    )
+  return `${baseUrl}/image?u=${encodeURIComponent(rawUrl)}`
+}
+
+/**
  * Crop whitespace and transparency from all four sides of an
  * HTMLImageElement. Returns a cropped PNG data URL, or null if no
  * border was found / the image was unprocessable.
@@ -753,7 +780,7 @@ const gridTemplateColumns =
                     : '—',
                 ],
               ]}
-              imageUrl={currentMeta?.image || ''}
+              imageUrl={currentMeta?.image ? snkrdunkProxiedImageUrl(currentMeta.image) : ''}
               imageLabel="SNKRDUNK product image"
               fallbackHint={`snkrdunk.com/apparels/${currentCard.snkrdunk_apparel_id}`}
               href={

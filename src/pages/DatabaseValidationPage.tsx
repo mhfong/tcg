@@ -316,6 +316,15 @@ export default function DatabaseValidationPage() {
   // refresh — only the first time we see new pending IDs in this
   // session.
   const [discoverEnqueued, setDiscoverEnqueued] = useState(false)
+  // discover_queue status counts (status → count). Used to render a
+  // progress bar so the user knows how many cards the worker has
+  // processed vs. still has to do.
+  const [queueStatus, setQueueStatus] = useState<{
+    pending: number
+    processing: number
+    done: number
+    failed: number
+  }>({ pending: 0, processing: 0, done: 0, failed: 0 })
 
   // Index of the card currently displayed in the detail panel
   const [cursor, setCursor] = useState(0)
@@ -339,7 +348,18 @@ export default function DatabaseValidationPage() {
       //      We surface their count in a banner so the user knows
       //      "I added a card but it doesn't show up" means the
       //      discover job hasn't run yet.
-      const [withId, withoutId] = await Promise.all([
+      // Three parallel queries:
+      //   1) Cards that have a snkrdunk_apparel_id — these drive the
+      //      validation queue (Unverified / Verified / Rejected).
+      //   2) Cards WITHOUT a snkrdunk_apparel_id — these need the
+      //      discover script to run before they can be validated.
+      //      We surface their count in a banner so the user knows
+      //      "I added a card but it doesn't show up" means the
+      //      discover job hasn't run yet.
+      //   3) discover_queue status counts — lets the banner show a
+      //      progress bar with done/total for the active discovery
+      //      batch.
+      const [withId, withoutId, queueRows] = await Promise.all([
         supabase
           .from('master_table')
           .select(
@@ -359,12 +379,27 @@ export default function DatabaseValidationPage() {
           .is('snkrdunk_apparel_id', null)
           .order('created_at', { ascending: true })
           .limit(50),
+        // Counts of rows by status. RLS allows the authenticated
+        // user to SELECT, so we can read counts without service role.
+        supabase
+          .from('discover_queue')
+          .select('status'),
       ])
       if (withId.error) throw withId.error
       const data = (withId.data ?? []) as CardRow[]
       setRows(data)
       setPendingDiscoveryCount((withoutId.data ?? []).length)
       setPendingDiscoveryIds((withoutId.data ?? []).map(r => r.id))
+      // Tally queue status counts. We tolerate the queue query
+      // failing (it's a nice-to-have) without aborting the whole
+      // load.
+      const qs = { pending: 0, processing: 0, done: 0, failed: 0 }
+      for (const r of (queueRows.data ?? []) as { status: string }[]) {
+        if (r.status in qs) {
+          qs[r.status as keyof typeof qs]++
+        }
+      }
+      setQueueStatus(qs)
       setCursor(0)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e))
@@ -822,59 +857,251 @@ const gridTemplateColumns =
           page detects new pending rows, it auto-enqueues them via
           the discover-trigger Edge Function; the GitHub Actions cron
           (`.github/workflows/discover.yml`) picks them up within 5
-          minutes. Banner copy reflects which step we're on. */}
-      {!loading && pendingDiscoveryCount > 0 && (
-        <div
-          className="lp-card"
-          style={{
-            marginBottom: '1rem',
-            padding: '0.75rem 1rem',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.75rem',
-            background: 'var(--accent-light)',
-            borderColor: 'var(--accent)',
-          }}
-        >
-          <span style={{ fontSize: '1.1rem' }}>{discoverEnqueued ? '🔄' : '⏳'}</span>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <strong style={{ color: 'var(--accent)' }}>
-              {discoverEnqueued
-                ? `Discovering ${pendingDiscoveryCount} card${pendingDiscoveryCount === 1 ? '' : 's'} on SNKRDUNK…`
-                : `${pendingDiscoveryCount} card${pendingDiscoveryCount === 1 ? '' : 's'} waiting for SNKRDUNK lookup`}
-            </strong>
+          minutes.
+
+          The banner follows the site's warm-coral theme:
+            - `lp-card` shell with `::before` gradient bar (matches
+              other cards on the page)
+            - status pill chips matching the existing `.tag` style
+              (ptcg / opcg / buy / sell)
+            - progress bar with the same rounded radius and shadow
+              treatment as `.btn`
+            - a soft @keyframes pulse on the spinner icon while
+              discovery is actively running
+            - status colors via `--success` / `--danger` so done rows
+              read green and failed rows read coral-red. */}
+      {!loading && pendingDiscoveryCount > 0 && (() => {
+        // Aggregate: the "active batch" is everything that's been
+        // touched by the worker (pending + processing + done +
+        // failed). The progress is `done / (done + failed)` since
+        // pending/processing aren't finished yet — but we display
+        // total coverage as done+failed over the active batch size
+        // so the bar fills monotonically as cards finish.
+        const total = queueStatus.pending + queueStatus.processing +
+          queueStatus.done + queueStatus.failed
+        const finished = queueStatus.done + queueStatus.failed
+        const pct = total > 0 ? Math.round((finished / total) * 100) : 0
+        const pctDone = total > 0 ? Math.round((queueStatus.done / total) * 100) : 0
+        const pctFailed = total > 0 ? Math.round((queueStatus.failed / total) * 100) : 0
+        const pctActive = 100 - pctDone - pctFailed
+        return (
+          <div
+            className="lp-card"
+            style={{
+              marginBottom: '1rem',
+              padding: '1rem 1.1rem',
+              borderColor: 'var(--accent)',
+            }}
+          >
+            {/* Header row: icon + status text + Discover-now button */}
             <div
               style={{
-                color: 'var(--text-secondary)',
-                fontSize: '0.8rem',
-                marginTop: 2,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.75rem',
+                marginBottom: total > 0 ? '0.85rem' : 0,
               }}
             >
-              {discoverEnqueued
-                ? <>Queued for the GitHub Actions worker. They&rsquo;ll appear in the Unverified tab within ~5 min once the discover script populates their <code>snkrdunk_apparel_id</code>. Refresh to check progress.</>
-                : <>These cards have no <code>snkrdunk_apparel_id</code> yet. Click &ldquo;Discover now&rdquo; to enqueue them — the worker picks them up within a few minutes.</>}
+              <span
+                aria-hidden="true"
+                style={{
+                  fontSize: '1.25rem',
+                  lineHeight: 1,
+                  display: 'inline-flex',
+                  width: '2rem',
+                  height: '2rem',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: '50%',
+                  background: 'var(--accent-light)',
+                  animation:
+                    queueStatus.processing > 0
+                      ? 'lp-pulse 1.4s ease-in-out infinite'
+                      : undefined,
+                }}
+              >
+                {queueStatus.processing > 0 ? '⚙️' : '⏳'}
+              </span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div
+                  style={{
+                    fontWeight: 700,
+                    color: 'var(--text-primary)',
+                    fontSize: '0.95rem',
+                  }}
+                >
+                  {discoverEnqueued
+                    ? queueStatus.processing > 0
+                      ? `Discovering ${total} card${total === 1 ? '' : 's'} on SNKRDUNK…`
+                      : `Queued ${pendingDiscoveryCount} card${pendingDiscoveryCount === 1 ? '' : 's'} for SNKRDUNK lookup`
+                    : `${pendingDiscoveryCount} card${pendingDiscoveryCount === 1 ? '' : 's'} need SNKRDUNK lookup`}
+                </div>
+                <div
+                  style={{
+                    color: 'var(--text-secondary)',
+                    fontSize: '0.78rem',
+                    marginTop: 2,
+                  }}
+                >
+                  These cards have no <code>snkrdunk_apparel_id</code> yet.
+                  The GitHub Actions worker runs{' '}
+                  <code>scripts/discover_snkrdunk_apparel_ids.py</code>{' '}
+                  on them. They&rsquo;ll appear in the Unverified tab
+                  automatically once matched.
+                </div>
+              </div>
+              {!discoverEnqueued && (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => {
+                    setDiscoverEnqueued(true)
+                    void triggerDiscover(pendingDiscoveryIds)
+                  }}
+                  style={{
+                    fontSize: '0.8rem',
+                    padding: '0.45rem 0.85rem',
+                    flexShrink: 0,
+                  }}
+                  title="Enqueue these card_ids so the GitHub Actions worker will discover their SNKRDUNK apparel_id"
+                >
+                  Discover now
+                </button>
+              )}
             </div>
+
+            {/* Progress bar + status chips — only when there's a queue */}
+            {total > 0 && (
+              <>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '0.75rem',
+                    marginBottom: '0.4rem',
+                    fontSize: '0.78rem',
+                    color: 'var(--text-secondary)',
+                  }}
+                >
+                  <span>
+                    <strong
+                      style={{
+                        color: 'var(--text-primary)',
+                        fontVariantNumeric: 'tabular-nums',
+                      }}
+                    >
+                      {finished}
+                    </strong>{' '}
+                    of {total} processed ({pct}%)
+                  </span>
+                  <span
+                    style={{
+                      fontVariantNumeric: 'tabular-nums',
+                      fontWeight: 600,
+                      color: 'var(--accent)',
+                    }}
+                  >
+                    {queueStatus.done}/{total} matched
+                  </span>
+                </div>
+
+                {/* Progress track. The bar is built as a 3-segment
+                    fill: green (done) | coral (active) | red
+                    (failed), so failed cards visibly subtract from
+                    the green portion even if the user is focused
+                    on the matched count. */}
+                <div
+                  role="progressbar"
+                  aria-valuenow={pct}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-label={`${finished} of ${total} cards processed`}
+                  style={{
+                    position: 'relative',
+                    height: 8,
+                    borderRadius: 999,
+                    background: 'var(--bg-primary)',
+                    overflow: 'hidden',
+                    boxShadow: 'inset 0 1px 2px rgba(74,63,56,0.06)',
+                  }}
+                >
+                  <div
+                    style={{
+                      position: 'absolute',
+                      left: 0,
+                      top: 0,
+                      bottom: 0,
+                      width: `${pctDone}%`,
+                      background:
+                        'linear-gradient(90deg, var(--success), color-mix(in srgb, var(--success) 75%, var(--accent)))',
+                      transition: 'width 400ms cubic-bezier(0.4,0,0.2,1)',
+                    }}
+                  />
+                  <div
+                    style={{
+                      position: 'absolute',
+                      left: `${pctDone}%`,
+                      top: 0,
+                      bottom: 0,
+                      width: `${pctActive}%`,
+                      background:
+                        'linear-gradient(90deg, color-mix(in srgb, var(--accent) 35%, transparent), color-mix(in srgb, var(--accent) 60%, transparent))',
+                      backgroundSize: '16px 100%',
+                      animation:
+                        queueStatus.processing > 0
+                          ? 'lp-progress-stripes 1.2s linear infinite'
+                          : undefined,
+                      transition: 'width 400ms cubic-bezier(0.4,0,0.2,1)',
+                    }}
+                  />
+                  <div
+                    style={{
+                      position: 'absolute',
+                      right: 0,
+                      top: 0,
+                      bottom: 0,
+                      width: `${pctFailed}%`,
+                      background:
+                        'linear-gradient(90deg, color-mix(in srgb, var(--danger) 75%, transparent), var(--danger))',
+                      transition: 'width 400ms cubic-bezier(0.4,0,0.2,1)',
+                    }}
+                  />
+                </div>
+
+                {/* Status chips. Same shape as the existing
+                    .tag / .tag-ptcg etc. classes so they read as
+                    native to the design system. */}
+                <div
+                  style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: '0.4rem',
+                    marginTop: '0.7rem',
+                  }}
+                >
+                  <span className="tag" style={{ background: 'var(--accent-light)', color: 'var(--accent)' }}>
+                    pending {queueStatus.pending}
+                  </span>
+                  {queueStatus.processing > 0 && (
+                    <span className="tag" style={{ background: 'rgba(212,160,92,0.18)', color: 'var(--warning)' }}>
+                      processing {queueStatus.processing}
+                    </span>
+                  )}
+                  <span className="tag" style={{ background: 'rgba(124,184,140,0.18)', color: 'var(--success)' }}>
+                    matched {queueStatus.done}
+                  </span>
+                  {queueStatus.failed > 0 && (
+                    <span className="tag" style={{ background: 'rgba(212,120,120,0.18)', color: 'var(--danger)' }}>
+                      failed {queueStatus.failed}
+                    </span>
+                  )}
+                </div>
+              </>
+            )}
           </div>
-          {!discoverEnqueued && (
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() => {
-                setDiscoverEnqueued(true)
-                void triggerDiscover(pendingDiscoveryIds)
-              }}
-              style={{
-                fontSize: '0.8rem',
-                padding: '0.4rem 0.75rem',
-                flexShrink: 0,
-              }}
-              title="Enqueue these card_ids so the GitHub Actions worker will discover their SNKRDUNK apparel_id"
-            >
-              Discover now
-            </button>
-          )}
-        </div>
-      )}
+        )
+      })()}
 
       {/* Empty state — different messages per filter so the user
           knows whether the queue is genuinely empty vs. just

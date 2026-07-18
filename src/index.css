@@ -485,6 +485,39 @@ select.input { appearance: none; cursor: pointer; }
 .tag-buy { background: rgba(124,184,140,0.18); color: var(--success); }
 .tag-sell { background: rgba(212,120,120,0.18); color: var(--danger); }
 
+/* ─── Animations ─── */
+/* Soft pulse for the validation-page discovery banner icon while
+   the worker is actively processing rows. Uses the same easing as
+   the rest of the site (cubic-bezier 0.4,0,0.2,1) and is short
+   enough to feel alive without being distracting. */
+@keyframes lp-pulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 var(--accent-light);
+  }
+  50% {
+    transform: scale(1.05);
+    box-shadow: 0 0 0 6px rgba(224, 136, 96, 0.04);
+  }
+}
+
+/* Diagonal-stripe "active" segment animation for the discovery
+   progress bar. Slides background-position to make the in-flight
+   portion visually distinct from the matched portion without
+   adding visual noise. */
+@keyframes lp-progress-stripes {
+  0%   { background-position: 0 0; }
+  100% { background-position: 16px 0; }
+}
+
+/* Reduce motion: kill the animations when the user has set
+   prefers-reduced-motion, so vestibular-sensitive users don't see
+   the pulse or stripe slide. */
+@media (prefers-reduced-motion: reduce) {
+  @keyframes lp-pulse { 0%, 100% { transform: none; } }
+  @keyframes lp-progress-stripes { 0%, 100% { background-position: 0 0; } }
+}
+
 /* ─── Empty state ─── */
 .empty-state {
   text-align: center;

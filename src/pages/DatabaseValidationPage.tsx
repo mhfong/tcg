@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 
@@ -354,17 +353,17 @@ export default function DatabaseValidationPage() {
             cards you've already vetted.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-          <Link to="/database" className="btn btn-ghost">Card database</Link>
-          <button
-            type="button"
-            className="btn btn-ghost"
-            onClick={() => void load()}
-            disabled={loading}
-          >
-            Refresh
-          </button>
-        </div>
+        <button
+          type="button"
+          className="btn btn-ghost"
+          onClick={() => void load()}
+          disabled={loading}
+          aria-label="Refresh"
+          title="Refresh"
+          style={{ padding: '0.4rem 0.6rem', fontSize: '1rem' }}
+        >
+          ↻
+        </button>
       </div>
 
       {/* Filter / progress strip */}
@@ -372,30 +371,59 @@ export default function DatabaseValidationPage() {
         className="lp-card"
         style={{
           marginBottom: '1rem',
-          padding: '0.875rem 1rem',
+          padding: '0.625rem 0.75rem',
           display: 'flex',
           flexWrap: 'wrap',
           alignItems: 'center',
           gap: '0.75rem',
         }}
       >
-        <div style={{ display: 'flex', gap: '0.375rem' }}>
-          {(['unverified', 'verified', 'rejected', 'all'] as const).map(f => (
-            <button
-              key={f}
-              type="button"
-              className={`btn ${filter === f ? 'btn-primary' : 'btn-ghost'}`}
-              onClick={() => setFilter(f)}
-            >
-              {f === 'unverified'
-                ? `Unverified (${counts.unverified})`
-                : f === 'verified'
-                  ? `Verified (${counts.verified})`
-                  : f === 'rejected'
-                    ? `Rejected (${counts.rejected})`
-                    : `All (${rows.length})`}
-            </button>
-          ))}
+        {/* Segmented filter: a single bordered pill group, not four full
+            buttons. Quieter, less button-noise. */}
+        <div
+          role="tablist"
+          aria-label="Filter validation queue"
+          style={{
+            display: 'inline-flex',
+            border: '1px solid var(--border)',
+            borderRadius: 999,
+            padding: 2,
+            gap: 2,
+            background: 'var(--bg-primary)',
+          }}
+        >
+          {(['unverified', 'verified', 'rejected', 'all'] as const).map(f => {
+            const active = filter === f
+            const count =
+              f === 'unverified' ? counts.unverified
+              : f === 'verified' ? counts.verified
+              : f === 'rejected' ? counts.rejected
+              : rows.length
+            return (
+              <button
+                key={f}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                className="btn"
+                onClick={() => setFilter(f)}
+                style={{
+                  padding: '0.25rem 0.7rem',
+                  borderRadius: 999,
+                  border: 'none',
+                  fontSize: '0.8rem',
+                  fontWeight: 600,
+                  background: active ? 'var(--accent)' : 'transparent',
+                  color: active ? '#fff' : 'var(--text-secondary)',
+                  boxShadow: 'none',
+                  textTransform: 'capitalize',
+                }}
+              >
+                {f}
+                <span style={{ opacity: 0.7, marginLeft: 4 }}>{count}</span>
+              </button>
+            )
+          })}
         </div>
         <div style={{ flex: 1, minWidth: 200 }}>
           <input
@@ -434,7 +462,7 @@ export default function DatabaseValidationPage() {
       {/* Detail panel */}
       {currentCard && (
         <div className="lp-card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
-          {/* Header: id + navigation */}
+          {/* Header: id + counter (skip / prev/next merged into the action bar below) */}
           <div
             style={{
               display: 'flex',
@@ -445,32 +473,65 @@ export default function DatabaseValidationPage() {
               marginBottom: '1rem',
             }}
           >
-            <code
-              style={{
-                fontSize: '0.85rem',
-                color: 'var(--text-secondary)',
-                fontFamily: 'ui-monospace, monospace',
-              }}
-            >
-              {currentCard.id}
-            </code>
-            <div style={{ display: 'flex', gap: '0.375rem', alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.75rem', minWidth: 0 }}>
+              <code
+                style={{
+                  fontSize: '0.85rem',
+                  color: 'var(--text-secondary)',
+                  fontFamily: 'ui-monospace, monospace',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {currentCard.id}
+              </code>
+              {currentCard.verify_status !== null && (
+                <button
+                  type="button"
+                  onClick={() => void setVerdict(null)}
+                  className="btn"
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: 0,
+                    fontSize: '0.75rem',
+                    color: 'var(--text-secondary)',
+                    textDecoration: 'underline',
+                    cursor: 'pointer',
+                  }}
+                  title="Reset this card to unverified"
+                >
+                  clear verdict
+                </button>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
               <button
                 type="button"
                 className="btn btn-ghost"
                 onClick={() => goTo(-1)}
                 disabled={filtered.findIndex(x => x.originalIdx === cursor) <= 0}
+                aria-label="Previous card"
+                title="Previous card"
+                style={{ padding: '0.3rem 0.55rem' }}
               >
                 ←
               </button>
-              <button
-                type="button"
-                className="btn btn-ghost"
-                onClick={() => goToNextUnverified()}
-                title="Skip to next unverified"
+              <span
+                style={{
+                  color: 'var(--text-secondary)',
+                  fontSize: '0.8rem',
+                  padding: '0 0.35rem',
+                  fontVariantNumeric: 'tabular-nums',
+                  minWidth: 48,
+                  textAlign: 'center',
+                }}
               >
-                Next unverified »
-              </button>
+                {filtered.length === 0
+                  ? '0 / 0'
+                  : `${filtered.findIndex(x => x.originalIdx === cursor) + 1} / ${filtered.length}`}
+              </span>
               <button
                 type="button"
                 className="btn btn-ghost"
@@ -478,8 +539,11 @@ export default function DatabaseValidationPage() {
                 disabled={
                   filtered.findIndex(x => x.originalIdx === cursor) >= filtered.length - 1
                 }
+                aria-label="Next card"
+                title="Next card"
+                style={{ padding: '0.3rem 0.55rem' }}
               >
-                »
+                →
               </button>
             </div>
           </div>
@@ -541,33 +605,21 @@ export default function DatabaseValidationPage() {
             />
           </div>
 
-          {/* Action bar */}
+          {/* Action bar — three zones:
+                [secondary] Reassign · Refresh SNKRDUNK · Skip to next unverified
+                [spacer]
+                [primary]   Reject · Confirm  */}
           <div
-            className="form-actions"
             style={{
               marginTop: '1.25rem',
+              display: 'flex',
               flexWrap: 'wrap',
+              alignItems: 'center',
               gap: '0.5rem',
+              paddingTop: '1rem',
+              borderTop: '1px solid var(--border)',
             }}
           >
-            <button
-              type="button"
-              className="btn btn-ghost"
-              onClick={() => goTo(-1)}
-            >
-              ← Prev
-            </button>
-            <div style={{ flex: 1 }} />
-            {currentCard.snkrdunk_apparel_id && (
-              <a
-                href={snkrdunkProductUrl(currentCard.snkrdunk_apparel_id)}
-                target="_blank"
-                rel="noreferrer noopener"
-                className="btn btn-ghost"
-              >
-                Open SNKRDUNK ↗
-              </a>
-            )}
             <ReassignControl
               current={currentCard.snkrdunk_apparel_id ?? ''}
               onApply={a => void reassignApparelId(a)}
@@ -586,23 +638,25 @@ export default function DatabaseValidationPage() {
                 }
               }}
               disabled={!currentCard.snkrdunk_apparel_id}
+              title="Discard cached SNKRDUNK metadata and re-fetch"
             >
-              {currentMetaLoading ? 'Refreshing…' : 'Re-fetch SNKRDUNK'}
+              {currentMetaLoading ? 'Refreshing…' : '↻ Refresh image'}
             </button>
-            {currentCard.verify_status !== null && (
-              <button
-                type="button"
-                className="btn btn-ghost"
-                onClick={() => void setVerdict(null)}
-              >
-                Clear verdict
-              </button>
-            )}
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => goToNextUnverified()}
+              title="Skip to next unverified card"
+            >
+              Skip unverified →
+            </button>
+            <div style={{ flex: 1 }} />
             <button
               type="button"
               className="btn btn-danger"
               onClick={() => void setVerdict('rejected')}
               disabled={currentCard.verify_status === 'rejected'}
+              style={{ minWidth: 110 }}
             >
               ✖ Reject
             </button>
@@ -611,6 +665,7 @@ export default function DatabaseValidationPage() {
               className="btn btn-primary"
               onClick={() => void setVerdict('verified')}
               disabled={currentCard.verify_status === 'verified'}
+              style={{ minWidth: 110 }}
             >
               ✓ Confirm
             </button>

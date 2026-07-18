@@ -86,14 +86,14 @@ const desktopNavItems: NavItem[] = [
   { to: '/transactions', label: 'Transactions', Icon: TransactionsIcon },
   { to: '/inventory', label: 'Inventory', Icon: InventoryIcon },
   { to: '/database', label: 'Database', Icon: DatabaseIcon },
-  { to: '/database/validation', label: 'Validation', Icon: ValidationIcon },
+  { to: '/validation', label: 'Validation', Icon: ValidationIcon },
   { to: '/settings', label: 'Settings', Icon: SettingsIcon },
 ]
 
 const mobileNavItems: NavItem[] = [
   { to: '/settings', label: 'Settings', Icon: SettingsIcon },
   { to: '/database', label: 'Database', Icon: DatabaseIcon },
-  { to: '/database/validation', label: 'Validation', Icon: ValidationIcon },
+  { to: '/validation', label: 'Validation', Icon: ValidationIcon },
   { to: '/transactions', label: 'Transactions', Icon: TransactionsIcon },
   { to: '/inventory', label: 'Inventory', Icon: InventoryIcon },
   { to: '/watchlist', label: 'Watchlist', Icon: WatchlistIcon },

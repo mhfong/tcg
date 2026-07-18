@@ -541,7 +541,7 @@ export default function DatabasePage() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <Link to="/database/validation" className="btn btn-ghost">
+          <Link to="/validation" className="btn btn-ghost">
             Validate mappings
           </Link>
           <button

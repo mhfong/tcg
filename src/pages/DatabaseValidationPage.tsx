@@ -355,7 +355,7 @@ export default function DatabaseValidationPage() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-          <Link to="/database" className="btn btn-ghost">← Database</Link>
+          <Link to="/database" className="btn btn-ghost">Card database</Link>
           <button
             type="button"
             className="btn btn-ghost"

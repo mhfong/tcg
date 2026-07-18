@@ -42,7 +42,11 @@ function AppRoutes() {
         <Route path="/transactions" element={<TransactionPage />} />
         <Route path="/inventory" element={<InventoryPage />} />
         <Route path="/database" element={<DatabasePage />} />
-        <Route path="/database/validation" element={<DatabaseValidationPage />} />
+        {/* Validation was previously nested at /database/validation; keep a
+            legacy redirect so any bookmarked old URL still lands on the new
+            top-level Validation page. */}
+        <Route path="/database/validation" element={<Navigate to="/validation" replace />} />
+        <Route path="/validation" element={<DatabaseValidationPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" />} />

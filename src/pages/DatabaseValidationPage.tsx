@@ -480,15 +480,24 @@ const gridTemplateColumns =
     : 'minmax(0, 1fr) minmax(0, 1fr)'
 
   // ─── Verdict actions (PATCH via Supabase REST)
-  async function setVerdict(status: 'verified' | 'rejected' | null) {
-    if (!currentCard) return
+  // Both the side-by-side detail panel and the Verified-table view
+  // need to mutate a card's verify_status. To avoid duplicating the
+  // optimistic-update + Supabase call, we centralize it here. Pass
+  // the target card explicitly; if omitted, falls back to the
+  // currently-displayed card (the detail-panel workflow).
+  async function setVerdict(
+    status: 'verified' | 'rejected' | null,
+    card?: CardRow,
+  ) {
+    const target = card ?? currentCard
+    if (!target) return
     if (status === null) {
       // "Clear verdict" — reset both columns; falls back to the
       // queue so the user can re-review.
       const r = await supabase
         .from('master_table')
         .update({ verify_status: null, verified_at: null })
-        .eq('id', currentCard.id)
+        .eq('id', target.id)
       if (r.error) {
         setError(r.error.message)
         return
@@ -500,7 +509,7 @@ const gridTemplateColumns =
           verify_status: status,
           verified_at: new Date().toISOString(),
         })
-        .eq('id', currentCard.id)
+        .eq('id', target.id)
       if (r.error) {
         setError(r.error.message)
         return
@@ -510,7 +519,7 @@ const gridTemplateColumns =
     // just to advance the cursor.
     setRows(prev =>
       prev.map(r =>
-        r.id === currentCard.id
+        r.id === target.id
           ? {
               ...r,
               verify_status: status,
@@ -519,10 +528,15 @@ const gridTemplateColumns =
           : r,
       ),
     )
-    // Brief sleep so the user feels the action registered before we
-    // jump to the next card. 250ms is short enough to feel snappy.
-    await SLEEP_MS(250)
-    goToNextUnverified()
+    // Only the detail-panel workflow auto-advances; the table view
+    // just lets the row disappear from the filtered list (since
+    // `verify_status === null` no longer matches the filter).
+    if (!card) {
+      // Brief sleep so the user feels the action registered before we
+      // jump to the next card. 250ms is short enough to feel snappy.
+      await SLEEP_MS(250)
+      goToNextUnverified()
+    }
   }
 
   async function reassignApparelId(newId: string) {
@@ -686,7 +700,9 @@ const gridTemplateColumns =
         <div style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
           {filtered.length === 0
             ? 'no matches'
-            : `${filtered.findIndex(x => x.originalIdx === cursor) + 1} / ${filtered.length}`}
+            : filter === 'verified'
+              ? `${filtered.length} card${filtered.length === 1 ? '' : 's'}`
+              : `${filtered.findIndex(x => x.originalIdx === cursor) + 1} / ${filtered.length}`}
         </div>
       </div>
 
@@ -707,8 +723,184 @@ const gridTemplateColumns =
         </div>
       )}
 
-      {/* Detail panel */}
-      {currentCard && (
+      {/* Verified queue: table view of all confirmed cards. The
+          side-by-side comparison is overkill here — once a card is
+          marked verified there's nothing to decide, only to audit.
+          So we render a single table with one row per card, showing
+          card identity, SNKRDUNK apparel_id, status badge, and the
+          verified_at timestamp. */}
+      {filter === 'verified' && filtered.length > 0 && !loading && (
+        <div
+          className="lp-card"
+          style={{ padding: 0, marginBottom: '1rem', overflowX: 'auto' }}
+        >
+          <table
+            style={{
+              width: '100%',
+              borderCollapse: 'collapse',
+              fontSize: '0.85rem',
+              minWidth: 720,
+            }}
+          >
+            <thead>
+              <tr
+                style={{
+                  textAlign: 'left',
+                  borderBottom: '1px solid var(--border)',
+                  color: 'var(--text-secondary)',
+                  fontWeight: 600,
+                  fontSize: '0.75rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                }}
+              >
+                <th style={{ padding: '0.65rem 0.75rem' }}>Card</th>
+                <th style={{ padding: '0.65rem 0.75rem' }}>SNKRDUNK</th>
+                <th style={{ padding: '0.65rem 0.75rem' }}>Status</th>
+                <th style={{ padding: '0.65rem 0.75rem' }}>Verified at</th>
+                <th style={{ padding: '0.65rem 0.75rem', textAlign: 'right' }}>
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map(({ r }) => (
+                <tr
+                  key={r.id}
+                  style={{
+                    borderBottom: '1px solid var(--border)',
+                    verticalAlign: 'middle',
+                  }}
+                >
+                  <td style={{ padding: '0.55rem 0.75rem' }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.6rem',
+                        minWidth: 0,
+                      }}
+                    >
+                      <img
+                        src={yuyuteiImageUrl(r)}
+                        alt={r.card_name || r.id}
+                        loading="lazy"
+                        referrerPolicy="no-referrer"
+                        style={{
+                          width: 40,
+                          height: 56,
+                          objectFit: 'contain',
+                          borderRadius: 4,
+                          background: '#fff',
+                          flex: '0 0 auto',
+                        }}
+                      />
+                      <div style={{ minWidth: 0 }}>
+                        <div
+                          style={{
+                            fontWeight: 600,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {r.card_name || r.id}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: '0.72rem',
+                            color: 'var(--text-secondary)',
+                            fontFamily: 'ui-monospace, monospace',
+                          }}
+                        >
+                          {r.tcg_type} · {r.card_series} · {r.card_index || '—'} ·{' '}
+                          {r.card_rarity || '—'}
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                  <td style={{ padding: '0.55rem 0.75rem' }}>
+                    {r.snkrdunk_apparel_id ? (
+                      <a
+                        href={snkrdunkProductUrl(r.snkrdunk_apparel_id)}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{
+                          fontFamily: 'ui-monospace, monospace',
+                          color: 'var(--accent)',
+                          textDecoration: 'none',
+                        }}
+                      >
+                        {r.snkrdunk_apparel_id}
+                      </a>
+                    ) : (
+                      <span style={{ color: 'var(--text-secondary)' }}>—</span>
+                    )}
+                  </td>
+                  <td style={{ padding: '0.55rem 0.75rem' }}>
+                    <span
+                      style={{
+                        display: 'inline-block',
+                        padding: '0.15rem 0.55rem',
+                        borderRadius: 999,
+                        background:
+                          r.verify_status === 'verified'
+                            ? 'color-mix(in srgb, var(--accent) 18%, transparent)'
+                            : 'color-mix(in srgb, #c0392b 18%, transparent)',
+                        color:
+                          r.verify_status === 'verified'
+                            ? 'var(--accent)'
+                            : '#c0392b',
+                        fontSize: '0.72rem',
+                        fontWeight: 600,
+                        letterSpacing: '0.03em',
+                        textTransform: 'uppercase',
+                      }}
+                    >
+                      {r.verify_status ?? 'unverified'}
+                    </span>
+                  </td>
+                  <td
+                    style={{
+                      padding: '0.55rem 0.75rem',
+                      color: 'var(--text-secondary)',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {r.verified_at
+                      ? new Date(r.verified_at).toLocaleString()
+                      : '—'}
+                  </td>
+                  <td
+                    style={{
+                      padding: '0.55rem 0.75rem',
+                      textAlign: 'right',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={() => void setVerdict(null, r)}
+                      style={{
+                        fontSize: '0.75rem',
+                        padding: '0.25rem 0.55rem',
+                      }}
+                      title="Reset this card to unverified"
+                    >
+                      clear
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Detail panel — only shown for Unverified / Rejected queues.
+          The Verified queue uses the table view above. */}
+      {filter !== 'verified' && currentCard && (
         <div className="lp-card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
           {/* Header: id + counter (skip / prev/next merged into the action bar below) */}
           <div

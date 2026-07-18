@@ -30,9 +30,22 @@ interface SnkrdunkMetadata {
 function yuyuteiImageUrl(card: CardRow): string {
   const url = (card.url_yuyutei ?? '').trim()
   if (!url) return ''
-  const slug = url.split('/').filter(Boolean).pop() ?? ''
+  // The CDN path mirrors the yuyu-tei product URL:
+  //   https://yuyu-tei.jp/sell/{tcg}/card/{series}/{slug}
+  //   https://card.yuyu-tei.jp/{tcg}/front/{series}/{slug}.jpg
+  // We extract both series and slug from url_yuyutei rather than
+  // from card.card_series — the card_series field is the short
+  // display label (e.g. "st01") but the CDN uses the full
+  // product-page series slug (e.g. "promo-st10"). When the two
+  // diverge (promos, reprints, anniversary sets) the CDN path
+  // built from card_series 404s, but the one built from the URL
+  // resolves correctly.
+  const segments = url.split('/').filter(Boolean)
+  const slug = segments[segments.length - 1] ?? ''
+  const series = segments[segments.length - 2] ?? ''
+  if (!slug || !series) return ''
   const tcgPath = card.tcg_type === 'PTCG' ? 'poc' : 'opc'
-  return `https://card.yuyu-tei.jp/${tcgPath}/front/${card.card_series}/${slug}.jpg`
+  return `https://card.yuyu-tei.jp/${tcgPath}/front/${series}/${slug}.jpg`
 }
 
 function snkrdunkProductUrl(apparel_id: string): string {

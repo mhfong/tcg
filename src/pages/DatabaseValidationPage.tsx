@@ -40,20 +40,17 @@ function snkrdunkProductUrl(apparel_id: string): string {
 }
 
 /**
- * Crop pure-white padding from all four sides of an HTMLImageElement,
- * optionally scaling the result to a target height.
+ * Crop pure-white padding from all four sides of an HTMLImageElement.
  *
  * Walks inward from each edge until it hits a pixel whose RGB sum is
- * below a tolerance threshold. If `targetHeight` is provided, the
- * cropped canvas is rescaled to that height (aspect-ratio preserved)
- * before being exported. Returns a PNG data URL, or null if no white
- * border was found / the image was unprocessable.
+ * below a tolerance threshold. Returns a cropped PNG data URL, or null
+ * if no white border was found / the image was unprocessable.
  *
  * SNKRDUNK's upload_bg_removed product scans ship with a sizable white
  * border which makes them look small compared to the yuyu-tei scan in
  * the validation page's side-by-side comparison. Trimming the border
- * AND scaling to match the yuyu-tei card's height gives both images
- * the same visible size in the panel.
+ * lets the parent grid column (proportional to the cropped image's
+ * natural aspect ratio) display the card edge-to-edge.
  *
  * Performance: a typical ~600×600 image has ~2,400 pixels per edge to
  * scan; the function returns in well under 100ms on commodity hardware.
@@ -62,7 +59,6 @@ function snkrdunkProductUrl(apparel_id: string): string {
 async function trimWhiteBorders(
   img: HTMLImageElement,
   tolerance = 6,
-  targetHeight?: number | null,
 ): Promise<string | null> {
   const w = img.naturalWidth
   const h = img.naturalHeight
@@ -137,24 +133,13 @@ async function trimWhiteBorders(
     if (cropW <= 0 || cropH <= 0) return null
   }
 
-  // Optional rescale so the SNKRDUNK image matches the yuyu-tei
-  // card's natural rendered height. Skip if targetHeight is missing,
-  // unreasonably small, or would upscale (>2x the natural size).
-  let outW = cropW
-  let outH = cropH
-  if (targetHeight && targetHeight >= 64 && targetHeight <= cropH * 2) {
-    const scale = targetHeight / cropH
-    outH = Math.round(cropH * scale)
-    outW = Math.max(1, Math.round(cropW * scale))
-  }
-
   const out = document.createElement('canvas')
-  out.width = outW
-  out.height = outH
+  out.width = cropW
+  out.height = cropH
   const octx = out.getContext('2d')
   if (!octx) return null
   octx.imageSmoothingQuality = 'high'
-  octx.drawImage(canvas, srcX, srcY, cropW, cropH, 0, 0, outW, outH)
+  octx.drawImage(canvas, srcX, srcY, cropW, cropH, 0, 0, cropW, cropH)
   return out.toDataURL('image/png')
 }
 
@@ -346,39 +331,44 @@ export default function DatabaseValidationPage() {
     ? metaLoading.has(currentCard.snkrdunk_apparel_id)
     : false
 
-  // Rendered height of the yuyu-tei card image. The SNKRDUNK side
-  // uses this to scale its (cropped) image so the two scans are
-  // visually aligned at the same height. null until the yuyu-tei
-  // image has loaded; cleared when we navigate to a new card.
-  const [yuyuteiRenderedHeight, setYuyuteiRenderedHeight] =
-    useState<number | null>(null)
+  // Aspect ratios (naturalWidth / naturalHeight) of the two card images.
+// Stored as state so the parent can dynamically size the grid columns
+// proportionally: a wider column for the landscape SNKRDUNK scan and a
+// narrower one for the portrait yuyu-tei scan, so both images render at
+// the SAME visual height inside their respective containers.
+const [yuyuteiAspect, setYuyuteiAspect] = useState<number | null>(null)
+const [snkrdunkAspect, setSnkrdunkAspect] = useState<number | null>(null)
 
-  // Reset the measured height whenever we move to a different card,
-  // so the SNKRDUNK side doesn't briefly show a stale match.
-  useEffect(() => {
-    setYuyuteiRenderedHeight(null)
-  }, [currentCard?.id, currentCard?.url_yuyutei])
+// Reset all measurements when we move to a different card, so the next
+// card's measurements start fresh and the SNKRDUNK side doesn't briefly
+// show stale values.
+useEffect(() => {
+  setYuyuteiAspect(null)
+  setSnkrdunkAspect(null)
+}, [currentCard?.id, currentCard?.url_yuyutei, currentCard?.snkrdunk_apparel_id])
 
-  const reportYuyuteiHeight = useCallback((img: HTMLImageElement) => {
-    // img.clientHeight is the rendered height (after object-fit:
-    // contain's letterboxing). For our use we want the natural
-    // aspect-ratio's height at the container's width so the
-    // SNKRDUNK side matches the card's actual height, not the
-    // letterboxed space inside a 1:1 container.
-    if (!img.naturalWidth || !img.naturalHeight) return
-    // Compute what the height would be if the image filled the
-    // container width while preserving aspect ratio. The container
-    // is a CSS grid cell of unknown width, but we can use the
-    // natural ratio to scale the rendered width to a height.
-    // Simpler: just use img.clientHeight directly, since the
-    // yuyu-tei image is already tight (no white padding) and
-    // object-fit: contain inside a 1:1 container will render it
-    // at the smaller of (container width, container height * ratio).
-    // We want the actual rendered height of the card itself, so
-    // clientHeight is the right metric.
-    const h = img.clientHeight
-    if (h > 0) setYuyuteiRenderedHeight(h)
-  }, [])
+const reportImageMetrics = useCallback(
+  (img: HTMLImageElement, side: 'yuyutei' | 'snkrdunk') => {
+    const w = img.naturalWidth
+    const h = img.naturalHeight
+    if (!w || !h) return
+    const aspect = w / h
+    if (side === 'yuyutei') {
+      setYuyuteiAspect(aspect)
+    } else {
+      setSnkrdunkAspect(aspect)
+    }
+  },
+  [])
+
+// Compute the grid column template. Each column gets a flex fraction
+// proportional to its image's aspect ratio, so a portrait (yuyu-tei)
+// and a landscape (SNKRDUNK) image both end up at the same visual
+// height. Fall back to equal columns when neither aspect is known yet.
+const gridTemplateColumns =
+  yuyuteiAspect && snkrdunkAspect
+    ? `${yuyuteiAspect}fr ${snkrdunkAspect}fr`
+    : 'minmax(0, 1fr) minmax(0, 1fr)'
 
   // ─── Verdict actions (PATCH via Supabase REST)
   async function setVerdict(status: 'verified' | 'rejected' | null) {
@@ -704,7 +694,7 @@ export default function DatabaseValidationPage() {
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
+              gridTemplateColumns,
               gap: '1rem',
               alignItems: 'start',
             }}
@@ -722,7 +712,7 @@ export default function DatabaseValidationPage() {
               imageUrl={yuyuteiImageUrl(currentCard)}
               imageLabel="yuyu-tei front scan"
               fallbackHint={`card.yuyu-tei.jp/.../${currentCard.card_series}/${(currentCard.url_yuyutei ?? '').split('/').pop()}`}
-              onImageLoad={reportYuyuteiHeight}
+              onImageLoad={img => reportImageMetrics(img, 'yuyutei')}
             />
 
             {/* RIGHT: SNKRDUNK card image + meta */}
@@ -757,7 +747,7 @@ export default function DatabaseValidationPage() {
               }
               loading={currentMetaLoading}
               cropWhite
-              targetHeight={yuyuteiRenderedHeight}
+              onImageLoad={img => reportImageMetrics(img, 'snkrdunk')}
             />
           </div>
 
@@ -843,7 +833,6 @@ function CardSide({
   href,
   loading,
   cropWhite = false,
-  targetHeight = null,
   onImageLoad,
 }: {
   title: string
@@ -863,16 +852,10 @@ function CardSide({
    */
   cropWhite?: boolean
   /**
-   * If set, the cropped output is scaled to this height (aspect-ratio
-   * preserved), and the image container's height is forced to this
-   * value too. Used to make the SNKRDUNK image match the yuyu-tei
-   * card's rendered height in the side-by-side comparison.
-   */
-  targetHeight?: number | null
-  /**
    * Fires after the <img> loads (before any crop is applied). The
-   * parent uses this to measure the yuyu-tei card's natural rendered
-   * height, then feeds it back as targetHeight to the SNKRDUNK side.
+   * parent uses this to read the image's natural aspect ratio so it
+   * can size the two grid columns proportionally and make both
+   * images render at the same visual height.
    */
   onImageLoad?: (img: HTMLImageElement) => void
 }) {
@@ -890,21 +873,16 @@ function CardSide({
 
   // Run the crop after the image finishes loading. We piggyback on the
   // <img>'s onLoad below — no second network request.
-  //
-  // The `targetHeight` dependency is intentional: if the parent learns
-  // the yuyu-tei card's height *after* this image's onLoad fires (e.g.
-  // the SNKRDUNK image loaded before the yuyu-tei image did), the
-  // callback closure captures a fresh `targetHeight` and we re-run the
-  // crop with the correct scale. The `cropping` + `croppedSrc` guards
-  // make this idempotent.
   const handleImageLoaded = useCallback(
     async (img: HTMLImageElement) => {
+      // Notify the parent first so it can capture the aspect ratio
+      // (and any other metrics) before we hand off to cropping.
       onImageLoad?.(img)
       if (!cropWhite) return
       if (cropping) return
       try {
         setCropping(true)
-        const dataUrl = await trimWhiteBorders(img, 6, targetHeight)
+        const dataUrl = await trimWhiteBorders(img)
         if (dataUrl) setCroppedSrc(dataUrl)
       } catch {
         // Swallow — fall back to the original src. We don't want a
@@ -913,7 +891,7 @@ function CardSide({
         setCropping(false)
       }
     },
-    [cropWhite, cropping, onImageLoad, targetHeight],
+    [cropWhite, cropping, onImageLoad],
   )
 
   // Pick the effective src: a cropped data URL if we have one, else the
@@ -938,13 +916,11 @@ function CardSide({
       <div
         style={{
           width: '100%',
-          // When a target height is known (SNKRDUNK side matching the
-          // yuyu-tei card's natural height), use it directly. Otherwise
-          // fall back to the original square aspect-ratio so the panel
-          // still looks balanced on its own.
-          ...(targetHeight
-            ? { height: targetHeight }
-            : { aspectRatio: '1 / 1' }),
+          // Square container — the parent grid column is sized to the
+          // image's aspect ratio, so the image fills it edge-to-edge
+          // with object-fit: contain. The result: both images render
+          // at the same visual height regardless of aspect.
+          aspectRatio: '1 / 1',
           background: '#fff',
           borderRadius: 8,
           overflow: 'hidden',

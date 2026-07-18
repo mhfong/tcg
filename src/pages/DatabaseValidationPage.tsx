@@ -256,6 +256,13 @@ export default function DatabaseValidationPage() {
   const [error, setError] = useState<string | null>(null)
   const [metaCache, setMetaCache] = useState<Record<string, SnkrdunkMetadata>>({})
   const [metaLoading, setMetaLoading] = useState<Set<string>>(new Set())
+  // Count of cards in master_table whose snkrdunk_apparel_id is
+  // still NULL. These cards exist in the database but aren't part
+  // of the validation queue yet — the user needs to run
+  // scripts/discover_snkrdunk_apparel_ids.py to look them up on
+  // SNKRDUNK. We surface this count in a banner so the user
+  // knows why their newly-added card isn't appearing.
+  const [pendingDiscoveryCount, setPendingDiscoveryCount] = useState(0)
 
   // Index of the card currently displayed in the detail panel
   const [cursor, setCursor] = useState(0)
@@ -271,18 +278,33 @@ export default function DatabaseValidationPage() {
     setLoading(true)
     setError(null)
     try {
-      const r = await supabase
-        .from('master_table')
-        .select(
-          'id,tcg_type,card_series,card_index,card_name,card_rarity,url_yuyutei,snkrdunk_apparel_id,verified_at,verify_status',
-        )
-        .not('snkrdunk_apparel_id', 'is', null)
-        .order('verify_status', { ascending: true, nullsFirst: true })
-        .order('created_at', { ascending: true })
-        .limit(500)
-      if (r.error) throw r.error
-      const data = (r.data ?? []) as CardRow[]
+      // Two queries in parallel:
+      //   1) Cards that have a snkrdunk_apparel_id — these drive the
+      //      validation queue (Unverified / Verified / Rejected).
+      //   2) Cards WITHOUT a snkrdunk_apparel_id — these need the
+      //      discover script to run before they can be validated.
+      //      We surface their count in a banner so the user knows
+      //      "I added a card but it doesn't show up" means the
+      //      discover job hasn't run yet.
+      const [withId, withoutId] = await Promise.all([
+        supabase
+          .from('master_table')
+          .select(
+            'id,tcg_type,card_series,card_index,card_name,card_rarity,url_yuyutei,snkrdunk_apparel_id,verified_at,verify_status',
+          )
+          .not('snkrdunk_apparel_id', 'is', null)
+          .order('verify_status', { ascending: true, nullsFirst: true })
+          .order('created_at', { ascending: true })
+          .limit(500),
+        supabase
+          .from('master_table')
+          .select('id', { count: 'exact', head: true })
+          .is('snkrdunk_apparel_id', null),
+      ])
+      if (withId.error) throw withId.error
+      const data = (withId.data ?? []) as CardRow[]
       setRows(data)
+      setPendingDiscoveryCount(withoutId.count ?? 0)
       setCursor(0)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e))
@@ -709,6 +731,45 @@ const gridTemplateColumns =
       {error && (
         <div className="form-alert form-alert--error" style={{ marginBottom: '1rem' }}>
           {error}
+        </div>
+      )}
+
+      {/* Pending-discovery banner — surfaces cards that exist in
+          master_table but have no SNKRDUNK apparel_id yet. Without
+          this, the user adds a card and wonders why it never appears
+          in any filter tab. The answer: the daily discover script
+          hasn't run yet. */}
+      {!loading && pendingDiscoveryCount > 0 && (
+        <div
+          className="lp-card"
+          style={{
+            marginBottom: '1rem',
+            padding: '0.75rem 1rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+            background: 'var(--accent-light)',
+            borderColor: 'var(--accent)',
+          }}
+        >
+          <span style={{ fontSize: '1.1rem' }}>⏳</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <strong style={{ color: 'var(--accent)' }}>
+              {pendingDiscoveryCount} card{pendingDiscoveryCount === 1 ? '' : 's'} waiting for SNKRDUNK lookup
+            </strong>
+            <div
+              style={{
+                color: 'var(--text-secondary)',
+                fontSize: '0.8rem',
+                marginTop: 2,
+              }}
+            >
+              These cards have no <code>snkrdunk_apparel_id</code> yet —
+              run <code>scripts/discover_snkrdunk_apparel_ids.py</code> to
+              look them up on SNKRDUNK. They'll appear in the Unverified
+              tab automatically once matched.
+            </div>
+          </div>
         </div>
       )}
 

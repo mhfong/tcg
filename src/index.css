@@ -415,13 +415,17 @@ select.input { appearance: none; cursor: pointer; }
   border-radius: 14px;
   text-decoration: none;
   color: var(--text-secondary);
-  font-size: 0.6rem;
+  /* Mobile nav has 7 labels in a row across a 360-414px viewport.
+     At 0.6rem the longer labels ("Validation", "Transaction") get
+     clipped on narrow phones. Drop to 0.55rem (~8.8px) and tighten
+     letter-spacing so all 7 labels fit on a single line in one row. */
+  font-size: 0.55rem;
   font-weight: 700;
-  letter-spacing: 0.01em;
+  letter-spacing: 0;
   line-height: 1;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
+  text-overflow: clip;
   max-width: 100%;
   transition: color 0.2s cubic-bezier(0.4,0,0.2,1), background 0.2s cubic-bezier(0.4,0,0.2,1);
 }

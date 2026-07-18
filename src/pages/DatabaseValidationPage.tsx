@@ -712,13 +712,25 @@ const gridTemplateColumns =
         </div>
       )}
 
-      {/* Empty state */}
+      {/* Empty state — different messages per filter so the user
+          knows whether the queue is genuinely empty vs. just
+          filtered out by their search term. Verified/Rejected
+          tabs say so plainly when there are simply no cards in
+          that bucket. */}
       {!loading && filtered.length === 0 && (
         <div className="lp-card" style={{ padding: '2rem', textAlign: 'center' }}>
           <p style={{ margin: 0 }}>
             {rows.length === 0
               ? 'No cards have a snkrdunk_apparel_id yet. Run scripts/discover_snkrdunk_apparel_ids.py first.'
-              : 'No cards match this filter.'}
+              : searchTerm.trim()
+                ? 'No cards match this filter.'
+                : filter === 'unverified'
+                  ? 'No cards waiting to be verified'
+                  : filter === 'rejected'
+                    ? 'No cards is rejected'
+                    : filter === 'verified'
+                      ? 'No cards have been verified yet'
+                      : 'No cards match this filter.'}
           </p>
         </div>
       )}

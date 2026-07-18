@@ -978,6 +978,17 @@ function CardSide({
             src={effectiveSrc}
             alt={imageLabel}
             loading="lazy"
+            // `crossOrigin: 'anonymous'` opts the <img> into CORS mode
+            // so the browser will reject the response unless the
+            // server returns a matching Access-Control-Allow-Origin
+            // header. Without this, drawing the image to a canvas
+            // taints it (SecurityError on getImageData) — which is
+            // exactly what happens when we try to crop a
+            // cross-origin image without CORS headers. We only set it
+            // when we actually need to read pixel data (cropWhite).
+            // Yuyu-tei's CDN already serves CORS-clean images, so
+            // there's no downside — but for safety we keep it scoped.
+            {...(cropWhite ? { crossOrigin: 'anonymous' as const } : {})}
             referrerPolicy="no-referrer"
             style={{
               width: '100%',

@@ -259,7 +259,7 @@ export default function DatabaseValidationPage() {
 
   // Index of the card currently displayed in the detail panel
   const [cursor, setCursor] = useState(0)
-  const [filter, setFilter] = useState<'unverified' | 'verified' | 'rejected' | 'all'>('unverified')
+  const [filter, setFilter] = useState<'unverified' | 'verified' | 'rejected'>('unverified')
   const [searchTerm, setSearchTerm] = useState('')
   // Tracks whether the filter has been chosen by the user (or by the
   // initial-load auto-pick). Once true, we never overwrite the user's
@@ -347,9 +347,10 @@ export default function DatabaseValidationPage() {
 
   // Auto-pick the initial filter once the rows have loaded. Priority:
   // Unverified (still needs review) → Rejected (already inspected,
-  // worth a second look) → All (fallback when nothing else has any
-  // entries). Verified is intentionally omitted from the auto-pick —
-  // cards already confirmed don't need to be the default view.
+  // worth a second look). When the queue is empty of both, we keep
+  // the default Unverified selection so the empty state renders.
+  // Verified is intentionally omitted from the auto-pick — cards
+  // already confirmed don't need to be the default view.
   //
   // We only auto-pick once per page mount (or after the rows are
   // wiped, e.g. logout/login) via the `filterChosen` flag. Any
@@ -363,7 +364,9 @@ export default function DatabaseValidationPage() {
     let next: typeof filter | null = null
     if (counts.unverified > 0) next = 'unverified'
     else if (counts.rejected > 0) next = 'rejected'
-    else if (rows.length > 0) next = 'all'
+    // No "all" fallback any more — when the queue is empty of
+    // unverified and rejected, fall through to the default
+    // (unverified) which renders the empty state.
     if (next && next !== filter) setFilter(next)
     setFilterChosen(true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -635,13 +638,12 @@ const gridTemplateColumns =
             background: 'var(--bg-primary)',
           }}
         >
-          {(['unverified', 'verified', 'rejected', 'all'] as const).map(f => {
+          {(['unverified', 'verified', 'rejected'] as const).map(f => {
             const active = filter === f
             const count =
               f === 'unverified' ? counts.unverified
               : f === 'verified' ? counts.verified
-              : f === 'rejected' ? counts.rejected
-              : rows.length
+              : counts.rejected
             return (
               <button
                 key={f}

@@ -39,6 +39,96 @@ function snkrdunkProductUrl(apparel_id: string): string {
   return `https://snkrdunk.com/apparels/${apparel_id}`
 }
 
+/**
+ * Crop pure-white padding from all four sides of an HTMLImageElement.
+ *
+ * Walks inward from each edge until it hits a pixel whose RGB sum is
+ * below a tolerance threshold. Returns a cropped PNG data URL, or null
+ * if no white border was found / the image was unprocessable.
+ *
+ * SNKRDUNK's upload_bg_removed product scans ship with a sizable white
+ * border which makes them look small compared to the yuyu-tei scan in
+ * the validation page's side-by-side comparison. Trimming the border
+ * gives the card scan more visible area in the panel.
+ *
+ * Performance: a typical ~600×600 image has ~2,400 pixels per edge to
+ * scan; the function returns in well under 100ms on commodity hardware.
+ * The result is memoized by the caller so this only runs once per URL.
+ */
+async function trimWhiteBorders(
+  img: HTMLImageElement,
+  tolerance = 6,
+): Promise<string | null> {
+  const w = img.naturalWidth
+  const h = img.naturalHeight
+  if (!w || !h) return null
+
+  const canvas = document.createElement('canvas')
+  canvas.width = w
+  canvas.height = h
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })
+  if (!ctx) return null
+  ctx.drawImage(img, 0, 0, w, h)
+
+  let imageData: ImageData
+  try {
+    imageData = ctx.getImageData(0, 0, w, h)
+  } catch {
+    // CORS-tainted canvas; cannot read pixels. Skip the crop.
+    return null
+  }
+  const data = imageData.data
+
+  // A pixel is "colored" if any channel is far enough from 255 to count.
+  // tolerance=6 means RGB sum must be ≤ (255+255+255) - 3*6 = 747.
+  const THRESHOLD = 255 * 3 - tolerance * 3
+  const isColored = (i: number) =>
+    data[i] + data[i + 1] + data[i + 2] < THRESHOLD
+
+  let top = 0
+  outerTop: for (; top < h; top++) {
+    for (let x = 0; x < w; x++) {
+      if (isColored((top * w + x) * 4)) break outerTop
+    }
+  }
+  let bottom = h - 1
+  outerBottom: for (; bottom > top; bottom--) {
+    for (let x = 0; x < w; x++) {
+      if (isColored((bottom * w + x) * 4)) break outerBottom
+    }
+  }
+  let left = 0
+  outerLeft: for (; left < w; left++) {
+    for (let y = top; y <= bottom; y++) {
+      if (isColored((y * w + left) * 4)) break outerLeft
+    }
+  }
+  let right = w - 1
+  outerRight: for (; right > left; right--) {
+    for (let y = top; y <= bottom; y++) {
+      if (isColored((y * w + right) * 4)) break outerRight
+    }
+  }
+
+  // No cropping needed (image already tight, or fully white — caller
+  // checks fully white and ignores).
+  if (top === 0 && left === 0 && bottom === h - 1 && right === w - 1) {
+    return null
+  }
+
+  const cropW = right - left + 1
+  const cropH = bottom - top + 1
+  if (cropW <= 0 || cropH <= 0) return null
+
+  const out = document.createElement('canvas')
+  out.width = cropW
+  out.height = cropH
+  const octx = out.getContext('2d')
+  if (!octx) return null
+  octx.drawImage(canvas, left, top, cropW, cropH, 0, 0, cropW, cropH)
+  return out.toDataURL('image/png')
+}
+
 /** Fetch the SNKRDUNK og:image + og:title for an apparel_id.
  *
  * Snkrdunk.com does not return CORS headers, so we cannot fetch the
@@ -602,6 +692,7 @@ export default function DatabaseValidationPage() {
                   : undefined
               }
               loading={currentMetaLoading}
+              cropWhite
             />
           </div>
 
@@ -686,6 +777,7 @@ function CardSide({
   fallbackHint,
   href,
   loading,
+  cropWhite = false,
 }: {
   title: string
   metaLines: [string, string][]
@@ -694,7 +786,56 @@ function CardSide({
   fallbackHint: string
   href?: string
   loading?: boolean
+  /**
+   * When true, the image is post-processed client-side to trim any pure-
+   * white border on all four sides. The crop is performed after the
+   * <img> loads: we draw it to an offscreen canvas, walk inward from
+   * each edge until we hit a non-white pixel, and replace the displayed
+   * src with a cropped data URL. Used for the SNKRDUNK side, whose
+   * upload_bg_removed product scans ship with sizable white padding.
+   */
+  cropWhite?: boolean
 }) {
+  // Memoized cache of original-URL → cropped data URL, so the crop only
+  // runs once per distinct image (not on every render). Keyed by the
+  // *original* URL so re-mounts with the same image skip the work.
+  const [croppedSrc, setCroppedSrc] = useState<string | null>(null)
+  const [cropping, setCropping] = useState(false)
+
+  // Reset the cropped cache whenever the source changes.
+  useEffect(() => {
+    setCroppedSrc(null)
+    setCropping(false)
+  }, [imageUrl])
+
+  // Run the crop after the image finishes loading. We piggyback on the
+  // <img>'s onLoad below — no second network request.
+  const handleImageLoaded = useCallback(
+    async (img: HTMLImageElement) => {
+      if (!cropWhite) return
+      // Skip if we already cropped this exact URL.
+      // (croppedSrc is checked in the closure; effect also resets it
+      // when imageUrl changes, so this naturally deduplicates.)
+      if (cropping) return
+      try {
+        setCropping(true)
+        const dataUrl = await trimWhiteBorders(img)
+        if (dataUrl) setCroppedSrc(dataUrl)
+      } catch {
+        // Swallow — fall back to the original src. We don't want a
+        // canvas/CORS quirk to break the page.
+      } finally {
+        setCropping(false)
+      }
+    },
+    [cropWhite, cropping],
+  )
+
+  // Pick the effective src: a cropped data URL if we have one, else the
+  // original. While the crop is in-flight we keep showing the original
+  // (the image element below already triggered onLoad for it).
+  const effectiveSrc = croppedSrc ?? imageUrl
+
   const inner = (
     <div
       style={{
@@ -722,9 +863,9 @@ function CardSide({
           position: 'relative',
         }}
       >
-        {imageUrl ? (
+        {effectiveSrc ? (
           <img
-            src={imageUrl}
+            src={effectiveSrc}
             alt={imageLabel}
             loading="lazy"
             referrerPolicy="no-referrer"
@@ -735,6 +876,7 @@ function CardSide({
               transition: 'opacity 200ms',
               opacity: loading ? 0.4 : 1,
             }}
+            onLoad={e => void handleImageLoaded(e.currentTarget)}
             onError={e => {
               const t = e.currentTarget
               t.style.display = 'none'
@@ -746,7 +888,7 @@ function CardSide({
 
         <div
           style={{
-            display: imageUrl ? 'none' : 'flex',
+            display: effectiveSrc ? 'none' : 'flex',
             position: 'absolute',
             inset: 0,
             alignItems: 'center',

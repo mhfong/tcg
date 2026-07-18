@@ -141,10 +141,12 @@ async function handle(req: Request): Promise<Response> {
   // trigger it on demand from here so each enqueue pays the runner
   // spin-up cost only when there's actually work to do.
   //
-  // If only `skipped` rows were already pending we still dispatch —
-  // a previous click may have failed to fire the workflow, and it's
-  // idempotent (the worker's first step claims pending rows; if the
-  // queue is empty the run exits cheaply).
+  // Only dispatch when we actually inserted NEW rows. If every
+  // card_id was already pending (skipped > 0, queued == 0) the
+  // worker is either already running on them or has already
+  // finished them — no need to kick off another run. This prevents
+  // the burst of duplicate dispatches that happens when the page
+  // auto-triggers across multiple mounts/polls.
   //
   // We do this *after* the DB write so that if GitHub dispatch
   // fails the rows are still safely queued (the user can retry
@@ -152,7 +154,7 @@ async function handle(req: Request): Promise<Response> {
   const ghToken = Deno.env.get("GH_DISPATCH_TOKEN") ?? ""
   let dispatched = false
   let dispatchError: string | null = null
-  if (ghToken) {
+  if (ghToken && queued > 0) {
     try {
       const r = await fetch(
         "https://api.github.com/repos/mhfong/tcg/actions/workflows/discover.yml/dispatches",
@@ -175,8 +177,11 @@ async function handle(req: Request): Promise<Response> {
     } catch (e) {
       dispatchError = e instanceof Error ? e.message : String(e)
     }
-  } else {
+  } else if (!ghToken) {
     dispatchError = "GH_DISPATCH_TOKEN not configured"
+  } else {
+    // queued === 0; skipped > 0. No new work to dispatch.
+    dispatchError = "skipped (already pending)"
   }
 
   return jsonResponse({ queued, skipped, ids: card_ids, dispatched, dispatch_error: dispatchError })

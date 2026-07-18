@@ -40,21 +40,33 @@ function snkrdunkProductUrl(apparel_id: string): string {
 }
 
 /**
- * Crop pure-white padding from all four sides of an HTMLImageElement.
+ * Crop whitespace and transparency from all four sides of an
+ * HTMLImageElement. Returns a cropped PNG data URL, or null if no
+ * border was found / the image was unprocessable.
  *
- * Walks inward from each edge until it hits a pixel whose RGB sum is
- * below a tolerance threshold. Returns a cropped PNG data URL, or null
- * if no white border was found / the image was unprocessable.
+ * "Whitespace" is treated broadly:
+ *   - Pure-white pixels (RGB ≈ 255,255,255) are considered padding.
+ *     This catches images that were saved with a solid white
+ *     background instead of a transparent one.
+ *   - Fully-transparent pixels (alpha = 0) are also considered
+ *     padding. This catches the `upload_bg_removed` SNKRDUNK
+ *     product scans which ship with transparent backgrounds.
  *
- * SNKRDUNK's upload_bg_removed product scans ship with a sizable white
- * border which makes them look small compared to the yuyu-tei scan in
- * the validation page's side-by-side comparison. Trimming the border
- * lets the parent grid column (proportional to the cropped image's
- * natural aspect ratio) display the card edge-to-edge.
+ * For each edge, we walk inward until we hit a pixel that is
+ * NEITHER near-white NOR fully transparent. The returned canvas
+ * is the tight bounding box of "opaque, non-white" content.
  *
- * Performance: a typical ~600×600 image has ~2,400 pixels per edge to
- * scan; the function returns in well under 100ms on commodity hardware.
- * The result is memoized by the caller so this only runs once per URL.
+ * SNKRDUNK's product scans ship with sizable transparent/white
+ * borders which makes them look small compared to the yuyu-tei
+ * scan in the validation page's side-by-side comparison. Trimming
+ * the border lets the parent grid column (proportional to the
+ * cropped image's natural aspect ratio) display the card
+ * edge-to-edge.
+ *
+ * Performance: a typical ~600×600 image has ~2,400 pixels per edge
+ * to scan; the function returns in well under 100ms on commodity
+ * hardware. The result is memoized by the caller so this only
+ * runs once per URL.
  */
 async function trimWhiteBorders(
   img: HTMLImageElement,
@@ -80,39 +92,43 @@ async function trimWhiteBorders(
   }
   const data = imageData.data
 
-  // A pixel is "colored" if any channel is far enough from 255 to count.
-  // tolerance=6 means RGB sum must be ≤ (255+255+255) - 3*6 = 747.
-  const THRESHOLD = 255 * 3 - tolerance * 3
-  const isColored = (i: number) =>
-    data[i] + data[i + 1] + data[i + 2] < THRESHOLD
+  // A pixel is "content" if it is NEITHER near-white NOR fully
+  // transparent. tolerance=6 means RGB sum must be ≤ (255+255+255)
+  // - 3*6 = 747 to count as not-white. For the alpha check, a
+  // pixel with alpha < 10 is treated as fully transparent.
+  const RGB_THRESHOLD = 255 * 3 - tolerance * 3
+  const ALPHA_THRESHOLD = 10
+  const isContent = (i: number) =>
+    data[i + 3] >= ALPHA_THRESHOLD &&
+    data[i] + data[i + 1] + data[i + 2] < RGB_THRESHOLD
 
   let top = 0
   outerTop: for (; top < h; top++) {
     for (let x = 0; x < w; x++) {
-      if (isColored((top * w + x) * 4)) break outerTop
+      if (isContent((top * w + x) * 4)) break outerTop
     }
   }
   let bottom = h - 1
   outerBottom: for (; bottom > top; bottom--) {
     for (let x = 0; x < w; x++) {
-      if (isColored((bottom * w + x) * 4)) break outerBottom
+      if (isContent((bottom * w + x) * 4)) break outerBottom
     }
   }
   let left = 0
   outerLeft: for (; left < w; left++) {
     for (let y = top; y <= bottom; y++) {
-      if (isColored((y * w + left) * 4)) break outerLeft
+      if (isContent((y * w + left) * 4)) break outerLeft
     }
   }
   let right = w - 1
   outerRight: for (; right > left; right--) {
     for (let y = top; y <= bottom; y++) {
-      if (isColored((y * w + right) * 4)) break outerRight
+      if (isContent((y * w + right) * 4)) break outerRight
     }
   }
 
-  // No cropping needed (image already tight, or fully white — caller
-  // checks fully white and ignores).
+  // No cropping needed (image already tight, or fully empty —
+  // caller checks and ignores).
   const noCrop =
     top === 0 && left === 0 && bottom === h - 1 && right === w - 1
 

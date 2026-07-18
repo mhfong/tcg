@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 
@@ -338,6 +338,19 @@ export default function DatabaseValidationPage() {
     done: number
     failed: number
   }>({ pending: 0, processing: 0, done: 0, failed: 0 })
+  // Tracks the number of `done`/`failed` rows from PREVIOUS batches
+  // that the user has already seen finish. We subtract this from
+  // every poll's totals so the progress bar only reflects the
+  // CURRENT active batch — otherwise the bar would never reset
+  // after the first batch completed (the queue retains done/failed
+  // rows indefinitely for audit purposes) and the user would think
+  // the worker was "still finding old cards" every time they
+  // added a new card to the database.
+  //
+  // The baseline is bumped up each time the active batch reaches
+  // 100% with no in-flight work, and reset to 0 the moment any
+  // new pending row appears (signalling a new batch has started).
+  const completedBaselineRef = useRef(0)
 
   // Index of the card currently displayed in the detail panel
   const [cursor, setCursor] = useState(0)
@@ -414,6 +427,46 @@ export default function DatabaseValidationPage() {
       }
       setQueueStatus(qs)
       setCursor(0)
+      // Update the "completed batch" baseline so the progress bar
+      // only tracks the CURRENT batch's work. The invariant is:
+      //
+      //   visibleDone + visibleFailed + pending + processing
+      //     = current batch size
+      //
+      // where visibleDone/Failed = max(0, rawDone/RawFailed -
+      // baseline).
+      //
+      // We bump the baseline UP every time the queue transitions
+      // from "had in-flight work" to "no in-flight work" — that's
+      // the moment a batch has finished. We bump it by exactly the
+      // amount of done/failed rows the queue has accumulated so
+      // far. That way:
+      //
+      //   - During batch 1: baseline stays 0, bar tracks 0→100%
+      //   - When batch 1 completes: baseline = done+failed so far
+      //     (e.g. 5). Bar collapses to 0%.
+      //   - If user adds 3 new cards: queue grows to pending=3,
+      //     done=5, failed=0. Total visible = 3+0+0+0 = 3. Bar
+      //     starts at 0/3 again. ✓
+      //   - During batch 2: done grows from 0→3 (relative to
+      //     baseline=5). Bar shows 3/6 = 50% as it fills. ✓
+      //   - When batch 2 completes: baseline bumps to 5+3 = 8.
+      //     Bar collapses again. ✓
+      //
+      // We only bump on the TRANSITION from in-flight to idle so
+      // a long-idle queue doesn't keep adding to the baseline on
+      // every poll.
+      const finishedThisBatch = qs.done + qs.failed
+      const inFlight = qs.pending + qs.processing
+      if (inFlight === 0 && finishedThisBatch > completedBaselineRef.current) {
+        // Batch has just finished (or we're catching up to a
+        // previously-finished batch on first page mount). Snap
+        // baseline up to the current done+failed total.
+        completedBaselineRef.current = finishedThisBatch
+      }
+      // Note: we never DECREASE the baseline. If rows are deleted
+      // from the queue externally, the visible counters may
+      // temporarily show as "already finished" which is benign.
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -930,12 +983,23 @@ const gridTemplateColumns =
         // pending/processing aren't finished yet — but we display
         // total coverage as done+failed over the active batch size
         // so the bar fills monotonically as cards finish.
+        //
+        // Subtract completedBaselineRef from done+failed so the
+        // bar only tracks the CURRENT batch. Without this, the
+        // first batch's done rows stay in the queue forever (audit
+        // trail) and the bar would never reset — every subsequent
+        // batch would show as a tiny slice of an ever-growing
+        // total, making the user think the worker is "still
+        // finding old cards".
+        const baseline = completedBaselineRef.current
+        const visibleDone = Math.max(0, queueStatus.done - baseline)
+        const visibleFailed = Math.max(0, queueStatus.failed - baseline)
         const total = queueStatus.pending + queueStatus.processing +
-          queueStatus.done + queueStatus.failed
-        const finished = queueStatus.done + queueStatus.failed
+          visibleDone + visibleFailed
+        const finished = visibleDone + visibleFailed
         const pct = total > 0 ? Math.round((finished / total) * 100) : 0
-        const pctDone = total > 0 ? Math.round((queueStatus.done / total) * 100) : 0
-        const pctFailed = total > 0 ? Math.round((queueStatus.failed / total) * 100) : 0
+        const pctDone = total > 0 ? Math.round((visibleDone / total) * 100) : 0
+        const pctFailed = total > 0 ? Math.round((visibleFailed / total) * 100) : 0
         const pctActive = 100 - pctDone - pctFailed
         return (
           <div
@@ -1055,7 +1119,7 @@ const gridTemplateColumns =
                       color: 'var(--accent)',
                     }}
                   >
-                    {queueStatus.done}/{total} matched
+                    {visibleDone}/{total} matched
                   </span>
                 </div>
 
@@ -1142,11 +1206,11 @@ const gridTemplateColumns =
                     </span>
                   )}
                   <span className="tag" style={{ background: 'rgba(124,184,140,0.18)', color: 'var(--success)' }}>
-                    matched {queueStatus.done}
+                    matched {visibleDone}
                   </span>
-                  {queueStatus.failed > 0 && (
+                  {visibleFailed > 0 && (
                     <span className="tag" style={{ background: 'rgba(212,120,120,0.18)', color: 'var(--danger)' }}>
-                      failed {queueStatus.failed}
+                      failed {visibleFailed}
                     </span>
                   )}
                 </div>

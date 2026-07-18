@@ -244,6 +244,51 @@ async function fetchSnkrdunkMeta(apparel_id: string): Promise<SnkrdunkMetadata> 
   }
 }
 
+/** Resolve the base URL for the discover-trigger Edge Function.
+ *
+ * Same env-var pattern as snkrdunkProxiedImageUrl above: prefer an
+ * explicit VITE_DISCOVER_TRIGGER_URL override, otherwise derive from
+ * VITE_SUPABASE_URL.
+ */
+function discoverTriggerUrl(): string {
+  const explicit =
+    (import.meta.env.VITE_DISCOVER_TRIGGER_URL as string | undefined)?.trim()
+  if (explicit) return explicit
+  const supabaseUrl =
+    (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim() ?? ''
+  return supabaseUrl.replace(/\/+$/, '') + '/functions/v1/discover-trigger'
+}
+
+/** Enqueue one or more card_ids in the discover_queue table via the
+ *  discover-trigger Edge Function. The Edge Function (not this code)
+ *  is responsible for the unique-partial-index dedupe, so repeated
+ *  calls for the same card are safe.
+ *
+ *  Returns true on success, false on transport / server error. We
+ *  don't surface the error to the user — the banner just stays in
+ *  "waiting" state and the next page refresh will retry.
+ */
+async function triggerDiscover(card_ids: string[]): Promise<boolean> {
+  if (card_ids.length === 0) return true
+  const anonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined)?.trim() ?? ''
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (anonKey) {
+    headers['apikey'] = anonKey
+    headers['Authorization'] = `Bearer ${anonKey}`
+  }
+  try {
+    const r = await fetch(discoverTriggerUrl(), {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ card_ids }),
+      cache: 'no-store',
+    })
+    return r.ok
+  } catch {
+    return false
+  }
+}
+
 // Lightweight front-end debounce so rapid clicks don't spam Supabase.
 const SLEEP_MS = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
 
@@ -263,6 +308,14 @@ export default function DatabaseValidationPage() {
   // SNKRDUNK. We surface this count in a banner so the user
   // knows why their newly-added card isn't appearing.
   const [pendingDiscoveryCount, setPendingDiscoveryCount] = useState(0)
+  // Card IDs of the pending-discovery rows. We auto-enqueue these
+  // in a separate effect so the GitHub Actions cron picks them up.
+  const [pendingDiscoveryIds, setPendingDiscoveryIds] = useState<string[]>([])
+  // Set to true once we've kicked off discover-trigger for the
+  // current page mount's pending IDs. We don't re-kick on every
+  // refresh — only the first time we see new pending IDs in this
+  // session.
+  const [discoverEnqueued, setDiscoverEnqueued] = useState(false)
 
   // Index of the card currently displayed in the detail panel
   const [cursor, setCursor] = useState(0)
@@ -296,15 +349,22 @@ export default function DatabaseValidationPage() {
           .order('verify_status', { ascending: true, nullsFirst: true })
           .order('created_at', { ascending: true })
           .limit(500),
+        // Fetch up to 50 pending IDs. We cap at 50 because the
+        // discover-trigger Edge Function also caps at 50 per
+        // request, and we don't want to spam the queue if a big
+        // batch sneaks through.
         supabase
           .from('master_table')
-          .select('id', { count: 'exact', head: true })
-          .is('snkrdunk_apparel_id', null),
+          .select('id')
+          .is('snkrdunk_apparel_id', null)
+          .order('created_at', { ascending: true })
+          .limit(50),
       ])
       if (withId.error) throw withId.error
       const data = (withId.data ?? []) as CardRow[]
       setRows(data)
-      setPendingDiscoveryCount(withoutId.count ?? 0)
+      setPendingDiscoveryCount((withoutId.data ?? []).length)
+      setPendingDiscoveryIds((withoutId.data ?? []).map(r => r.id))
       setCursor(0)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e))
@@ -316,6 +376,29 @@ export default function DatabaseValidationPage() {
   useEffect(() => {
     void load()
   }, [load])
+
+  // When load() finds new pending-discovery rows, automatically
+  // enqueue them via the discover-trigger Edge Function. The
+  // .github/workflows/discover.yml cron picks them up within 5
+  // minutes and runs scripts/discover_snkrdunk_apparel_ids.py.
+  //
+  // Why fire-and-forget from the page? Two reasons:
+  //   1. Discover-script logic (Playwright + Pillow) doesn't fit in
+  //      a Deno Edge Function sandbox, so it must run elsewhere.
+  //   2. The page is the natural signal source — it's the only
+  //      place that already knows which cards lack apparel_ids.
+  //
+  // We only fire once per page mount (gated by `discoverEnqueued`).
+  // Refreshing the page resets the gate so a new batch gets
+  // re-enqueued (the Edge Function dedupes via the partial unique
+  // index, so this is idempotent).
+  useEffect(() => {
+    if (discoverEnqueued) return
+    if (pendingDiscoveryIds.length === 0) return
+    setDiscoverEnqueued(true)
+    void triggerDiscover(pendingDiscoveryIds)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingDiscoveryIds, discoverEnqueued])
 
   // ─── Filter pipeline ──────────────────────────────────────────────────────
   // Each entry carries the card's original position in `rows` so the cursor
@@ -735,10 +818,11 @@ const gridTemplateColumns =
       )}
 
       {/* Pending-discovery banner — surfaces cards that exist in
-          master_table but have no SNKRDUNK apparel_id yet. Without
-          this, the user adds a card and wonders why it never appears
-          in any filter tab. The answer: the daily discover script
-          hasn't run yet. */}
+          master_table but have no SNKRDUNK apparel_id yet. When the
+          page detects new pending rows, it auto-enqueues them via
+          the discover-trigger Edge Function; the GitHub Actions cron
+          (`.github/workflows/discover.yml`) picks them up within 5
+          minutes. Banner copy reflects which step we're on. */}
       {!loading && pendingDiscoveryCount > 0 && (
         <div
           className="lp-card"
@@ -752,10 +836,12 @@ const gridTemplateColumns =
             borderColor: 'var(--accent)',
           }}
         >
-          <span style={{ fontSize: '1.1rem' }}>⏳</span>
+          <span style={{ fontSize: '1.1rem' }}>{discoverEnqueued ? '🔄' : '⏳'}</span>
           <div style={{ flex: 1, minWidth: 0 }}>
             <strong style={{ color: 'var(--accent)' }}>
-              {pendingDiscoveryCount} card{pendingDiscoveryCount === 1 ? '' : 's'} waiting for SNKRDUNK lookup
+              {discoverEnqueued
+                ? `Discovering ${pendingDiscoveryCount} card${pendingDiscoveryCount === 1 ? '' : 's'} on SNKRDUNK…`
+                : `${pendingDiscoveryCount} card${pendingDiscoveryCount === 1 ? '' : 's'} waiting for SNKRDUNK lookup`}
             </strong>
             <div
               style={{
@@ -764,12 +850,29 @@ const gridTemplateColumns =
                 marginTop: 2,
               }}
             >
-              These cards have no <code>snkrdunk_apparel_id</code> yet —
-              run <code>scripts/discover_snkrdunk_apparel_ids.py</code> to
-              look them up on SNKRDUNK. They'll appear in the Unverified
-              tab automatically once matched.
+              {discoverEnqueued
+                ? <>Queued for the GitHub Actions worker. They&rsquo;ll appear in the Unverified tab within ~5 min once the discover script populates their <code>snkrdunk_apparel_id</code>. Refresh to check progress.</>
+                : <>These cards have no <code>snkrdunk_apparel_id</code> yet. Click &ldquo;Discover now&rdquo; to enqueue them — the worker picks them up within a few minutes.</>}
             </div>
           </div>
+          {!discoverEnqueued && (
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => {
+                setDiscoverEnqueued(true)
+                void triggerDiscover(pendingDiscoveryIds)
+              }}
+              style={{
+                fontSize: '0.8rem',
+                padding: '0.4rem 0.75rem',
+                flexShrink: 0,
+              }}
+              title="Enqueue these card_ids so the GitHub Actions worker will discover their SNKRDUNK apparel_id"
+            >
+              Discover now
+            </button>
+          )}
         </div>
       )}
 

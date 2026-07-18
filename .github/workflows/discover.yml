@@ -1,0 +1,220 @@
+name: Discover SNKRDUNK apparel_ids
+
+# Polls the discover_queue table every 5 minutes and runs the Python
+# discover script for each pending card_id.
+#
+# Why a workflow and not a Deno Edge Function? The discover script
+# uses Playwright (browser automation) and Pillow (Python image
+# hashing) — neither works inside the Edge Function sandbox. The
+# GitHub-hosted runner is the cheapest environment with both
+# available out of the box.
+#
+# Workflow:
+#   1. claims up to N pending rows (sets status='processing',
+#      worker_id=<this run id>, last_attempted_at=now)
+#   2. for each claimed row, runs scripts/discover_snkrdunk_apparel_ids.py
+#      --only-this <card_id> --apply (the script writes the result
+#      directly to master_table.snkrdunk_apparel_id)
+#   3. marks rows 'done' (snkrdunk_apparel_id populated, or script
+#      ran to completion without finding a match) or 'failed' (with
+#      last_error captured)
+
+on:
+  schedule:
+    # Every 5 minutes. GitHub may delay cron schedules during periods
+    # of low activity, but for our use case (best-effort discovery on
+    # user request) that's fine.
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+    # Allow manual trigger from the Actions tab for debugging.
+
+permissions:
+  contents: read
+
+concurrency:
+  group: discover-snkrdunk
+  cancel-in-progress: false  # don't kill a running discover mid-card
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25  # 5 cards × ~4 min each, leaves headroom
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: scripts/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # playwright system deps first (apt-get); playwright install
+          # for chromium comes from requirements.txt via pip
+          sudo apt-get update -qq
+          sudo apt-get install -yqq --no-install-recommends \
+            libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
+            libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
+            libgbm1 libpango-1.0-0 libcairo2 libasound2t64
+          pip install -r scripts/requirements.txt
+          python -m playwright install chromium --with-deps
+
+      - name: Claim pending rows
+        id: claim
+        env:
+          PSQL_HOST: ${{ secrets.PSQL_HOST }}
+        run: |
+          python <<'PY'
+          """Atomically claim up to 5 pending rows. We use the PostgREST
+          API (via SUPABASE_URL + service-role key) rather than a direct
+          psql connection so this workflow doesn't need the DB password
+          — GitHub secrets only hold the SUPABASE_URL + service-role key
+          pair.
+          """
+          import os, json, urllib.request, urllib.error
+          url = os.environ["SUPABASE_URL"].rstrip("/")
+          key = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+          headers = {
+              "apikey": key,
+              "Authorization": f"Bearer {key}",
+              "Content-Type": "application/json",
+              "Prefer": "return=representation",
+          }
+          # Atomically claim a batch by:
+          #   1) SELECT 5 pending rows
+          #   2) UPDATE them to status='processing' WHERE id IN (...)
+          #      AND status='pending'  ← race-safe: only the worker
+          #                                 whose UPDATE actually changes
+          #                                 a row wins the claim.
+          # PostgREST supports UPDATE with WHERE … IN (…) and returns
+          # the updated rows. We filter again on status='pending' in
+          # the WHERE clause to avoid claiming rows another worker
+          # grabbed in the meantime.
+          # Step 1: pick ids
+          req = urllib.request.Request(
+              f"{url}/rest/v1/discover_queue"
+              "?select=id,card_id&status=eq.pending"
+              "&order=requested_at.asc&limit=5",
+              headers=headers,
+          )
+          pending = json.loads(urllib.request.urlopen(req).read())
+          if not pending:
+              print("No pending rows.")
+              with open(os.environ["GITHUB_OUTPUT"], "w") as f:
+                  f.write("ids=\n")
+              raise SystemExit(0)
+          ids = [str(r["id"]) for r in pending]
+          card_ids = [r["card_id"] for r in pending]
+          # Step 2: claim them. The filter `status=eq.pending` is
+          # redundant with the unique partial index on (card_id)
+          # WHERE status='pending' but it gives us explicit
+          # race-safety in case the index is dropped.
+          in_list = ",".join(ids)
+          patch_body = json.dumps({
+              "status": "processing",
+              "worker_id": os.environ["RUN_ID"],
+              "last_attempted_at": "now()",
+          }).encode()
+          req = urllib.request.Request(
+              f"{url}/rest/v1/discover_queue"
+              f"?id=in.({in_list})&status=eq.pending",
+              data=patch_body,
+              headers={**headers, "Prefer": "return=representation"},
+              method="PATCH",
+          )
+          claimed = json.loads(urllib.request.urlopen(req).read())
+          claimed_ids = [r["id"] for r in claimed]
+          claimed_cards = [r["card_id"] for r in claimed]
+          # The number of actually-claimed rows may be less than
+          # `pending` if a concurrent worker grabbed some in between.
+          # Filter our lists accordingly.
+          with open(os.environ["GITHUB_OUTPUT"], "w") as f:
+              f.write(f"queue_ids={json.dumps(claimed_ids)}\n")
+              f.write(f"card_ids={json.dumps(claimed_cards)}\n")
+          print(f"Claimed {len(claimed_ids)} rows: {claimed_cards}")
+          PY
+
+      - name: Run discover script per card
+        env:
+          QUEUE_IDS: ${{ steps.claim.outputs.queue_ids }}
+          CARD_IDS: ${{ steps.claim.outputs.card_ids }}
+        run: |
+          set -euo pipefail
+          # Both QUEUE_IDS and CARD_IDS are JSON arrays. Walk them
+          # together so each queue row gets marked 'done'/'failed'
+          # by its own index.
+          python <<'PY'
+          import os, json, subprocess, traceback, urllib.request
+          url = os.environ["SUPABASE_URL"].rstrip("/")
+          key = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+          headers = {
+              "apikey": key,
+              "Authorization": f"Bearer {key}",
+              "Content-Type": "application/json",
+              "Prefer": "return=representation",
+          }
+          queue_ids = json.loads(os.environ["QUEUE_IDS"])
+          card_ids = json.loads(os.environ["CARD_IDS"])
+          for qid, card_id in zip(queue_ids, card_ids):
+              print(f"\n=== {card_id} (queue id={qid}) ===")
+              try:
+                  result = subprocess.run(
+                      ["python", "scripts/discover_snkrdunk_apparel_ids.py",
+                       "--only-this", card_id, "--apply"],
+                      env={**os.environ,
+                           "SNKRDUNK_APPAREL_MIN_CONFIDENCE": "50"},
+                      capture_output=True, text=True, timeout=600,
+                  )
+                  print(result.stdout[-2000:])
+                  if result.returncode != 0:
+                      raise RuntimeError(
+                          f"exit {result.returncode}: {result.stderr[-500:]}"
+                      )
+                  # Check whether the script actually wrote an apparel_id
+                  sb_req = urllib.request.Request(
+                      f"{url}/rest/v1/master_table"
+                      f"?id=eq.{card_id}&select=snkrdunk_apparel_id",
+                      headers=headers,
+                  )
+                  row = json.loads(urllib.request.urlopen(sb_req).read())
+                  apparel_id = (row[0] or {}).get("snkrdunk_apparel_id") if row else None
+                  # Mark done. If apparel_id is still null the script ran
+                  # but found no match — that's still a 'done' state.
+                  patch = json.dumps({
+                      "status": "done",
+                      "completed_at": "now()",
+                      "attempts": 1,  # we'll increment from existing
+                      "last_error": None,
+                  }).encode()
+                  patch_req = urllib.request.Request(
+                      f"{url}/rest/v1/discover_queue?id=eq.{qid}",
+                      data=patch,
+                      headers=headers,
+                      method="PATCH",
+                  )
+                  urllib.request.urlopen(patch_req).read()
+                  print(f"OK done (apparel_id={apparel_id or 'NONE'})")
+              except Exception as e:
+                  err = str(e)[:500]
+                  print(f"FAILED: {err}")
+                  # Mark failed and increment attempts.
+                  patch = json.dumps({
+                      "status": "failed",
+                      "completed_at": "now()",
+                      "last_error": err,
+                  }).encode()
+                  patch_req = urllib.request.Request(
+                      f"{url}/rest/v1/discover_queue?id=eq.{qid}",
+                      data=patch,
+                      headers=headers,
+                      method="PATCH",
+                  )
+                  urllib.request.urlopen(patch_req).read()
+          PY

@@ -1,7 +1,14 @@
 name: Discover SNKRDUNK apparel_ids
 
-# Polls the discover_queue table every 5 minutes and runs the Python
-# discover script for each pending card_id.
+# Manually triggered discovery — the user runs this from the
+# Actions tab (or via "Discover now" on the validation page) when
+# they want newly-added cards to be matched against SNKRDUNK.
+#
+# We previously ran this on a `*/5 * * * *` cron, but at 8,640
+# fires/month the cumulative runner spin-up time pushed us over
+# the 2,000 min/month free-tier quota. Triggering on demand keeps
+# us at ~zero minute cost in steady state (only runs when the
+# user actually wants new cards matched).
 #
 # Why a workflow and not a Deno Edge Function? The discover script
 # uses Playwright (browser automation) and Pillow (Python image
@@ -18,15 +25,11 @@ name: Discover SNKRDUNK apparel_ids
 #   3. marks rows 'done' (snkrdunk_apparel_id populated, or script
 #      ran to completion without finding a match) or 'failed' (with
 #      last_error captured)
-
 on:
-  schedule:
-    # Every 5 minutes. GitHub may delay cron schedules during periods
-    # of low activity, but for our use case (best-effort discovery on
-    # user request) that's fine.
-    - cron: '*/5 * * * *'
   workflow_dispatch:
-    # Allow manual trigger from the Actions tab for debugging.
+    # Manual trigger from the Actions tab (or via gh workflow run).
+    # The "Discover now" button on the validation banner surfaces this
+    # to end users without exposing GitHub auth.
 
 permissions:
   contents: read

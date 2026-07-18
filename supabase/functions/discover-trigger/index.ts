@@ -135,7 +135,51 @@ async function handle(req: Request): Promise<Response> {
   }
   const skipped = card_ids.length - queued
 
-  return jsonResponse({ queued, skipped, ids: card_ids })
+  // After enqueueing, kick the GitHub Actions worker via the
+  // workflow_dispatch API. The worker used to run on a `*/5 * * * *`
+  // cron, but that was eating the free-tier minutes quota. We now
+  // trigger it on demand from here so each enqueue pays the runner
+  // spin-up cost only when there's actually work to do.
+  //
+  // If only `skipped` rows were already pending we still dispatch —
+  // a previous click may have failed to fire the workflow, and it's
+  // idempotent (the worker's first step claims pending rows; if the
+  // queue is empty the run exits cheaply).
+  //
+  // We do this *after* the DB write so that if GitHub dispatch
+  // fails the rows are still safely queued (the user can retry
+  // from the page; the unique partial index dedupes).
+  const ghToken = Deno.env.get("GH_DISPATCH_TOKEN") ?? ""
+  let dispatched = false
+  let dispatchError: string | null = null
+  if (ghToken) {
+    try {
+      const r = await fetch(
+        "https://api.github.com/repos/mhfong/tcg/actions/workflows/discover.yml/dispatches",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${ghToken}`,
+            Accept: "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ ref: "main" }),
+        },
+      )
+      // GitHub returns 204 No Content on success.
+      dispatched = r.status === 204
+      if (!dispatched) {
+        dispatchError = `github dispatch returned ${r.status}`
+      }
+    } catch (e) {
+      dispatchError = e instanceof Error ? e.message : String(e)
+    }
+  } else {
+    dispatchError = "GH_DISPATCH_TOKEN not configured"
+  }
+
+  return jsonResponse({ queued, skipped, ids: card_ids, dispatched, dispatch_error: dispatchError })
 }
 
 serve(handle)

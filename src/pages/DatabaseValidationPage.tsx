@@ -261,6 +261,10 @@ export default function DatabaseValidationPage() {
   const [cursor, setCursor] = useState(0)
   const [filter, setFilter] = useState<'unverified' | 'verified' | 'rejected' | 'all'>('unverified')
   const [searchTerm, setSearchTerm] = useState('')
+  // Tracks whether the filter has been chosen by the user (or by the
+  // initial-load auto-pick). Once true, we never overwrite the user's
+  // selection on subsequent re-fetches.
+  const [filterChosen, setFilterChosen] = useState(false)
 
   const load = useCallback(async () => {
     if (!user) return
@@ -327,6 +331,43 @@ export default function DatabaseValidationPage() {
     if (!cursorInFiltered) setCursor(filtered[0].originalIdx)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter, searchTerm, rows])
+
+  // Tab counts — computed from the full `rows` so the count badges
+  // always reflect totals regardless of the active filter. Defined
+  // here (above the priority-pick effect) so the effect can read it.
+  const counts = useMemo(() => {
+    const c = { unverified: 0, verified: 0, rejected: 0 }
+    for (const r of rows) {
+      if (r.verify_status === null) c.unverified++
+      else if (r.verify_status === 'verified') c.verified++
+      else if (r.verify_status === 'rejected') c.rejected++
+    }
+    return c
+  }, [rows])
+
+  // Auto-pick the initial filter once the rows have loaded. Priority:
+  // Unverified (still needs review) → Rejected (already inspected,
+  // worth a second look) → All (fallback when nothing else has any
+  // entries). Verified is intentionally omitted from the auto-pick —
+  // cards already confirmed don't need to be the default view.
+  //
+  // We only auto-pick once per page mount (or after the rows are
+  // wiped, e.g. logout/login) via the `filterChosen` flag. Any
+  // explicit user click on a tab sets the flag and prevents this
+  // effect from overriding the user's selection on subsequent
+  // re-fetches (e.g. manual Refresh button).
+  useEffect(() => {
+    if (filterChosen) return
+    if (loading) return
+    if (rows.length === 0) return
+    let next: typeof filter | null = null
+    if (counts.unverified > 0) next = 'unverified'
+    else if (counts.rejected > 0) next = 'rejected'
+    else if (rows.length > 0) next = 'all'
+    if (next && next !== filter) setFilter(next)
+    setFilterChosen(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows.length, counts.unverified, counts.rejected, loading, filterChosen])
 
   // ─── Fetch SNKRDUNK metadata for the current card (and warm-ahead)
   const warmAhead = (a: string) => {
@@ -539,15 +580,9 @@ const gridTemplateColumns =
   }
 
   // ─── Render helpers ───────────────────────────────────────────────────────
-  const counts = useMemo(() => {
-    const c = { unverified: 0, verified: 0, rejected: 0 }
-    for (const r of rows) {
-      if (r.verify_status === null) c.unverified++
-      else if (r.verify_status === 'verified') c.verified++
-      else if (r.verify_status === 'rejected') c.rejected++
-    }
-    return c
-  }, [rows])
+  // Note: `counts` is defined earlier (above the priority-pick effect)
+  // so the auto-filter logic can read it. We reuse the same memo here
+  // for the tab badges.
 
   return (
     <>
@@ -614,7 +649,10 @@ const gridTemplateColumns =
                 role="tab"
                 aria-selected={active}
                 className="btn"
-                onClick={() => setFilter(f)}
+                onClick={() => {
+                  setFilter(f)
+                  setFilterChosen(true)
+                }}
                 style={{
                   padding: '0.25rem 0.7rem',
                   borderRadius: 999,

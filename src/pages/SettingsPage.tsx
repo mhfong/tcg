@@ -2,6 +2,41 @@ import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 
+function factoryResetUrl(): string {
+  const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim() ?? ''
+  return supabaseUrl.replace(/\/+$/, '') + '/functions/v1/factory-reset'
+}
+
+async function triggerFactoryReset(): Promise<{ ok: boolean; error?: string }> {
+  const anonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined)?.trim() ?? ''
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session?.access_token) {
+    return { ok: false, error: 'You must be signed in to reset the app.' }
+  }
+  try {
+    const response = await fetch(factoryResetUrl(), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(anonKey ? { apikey: anonKey } : {}),
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ confirmation: 'RESET EVERYTHING' }),
+      cache: 'no-store',
+    })
+    const payload = await response.json().catch(() => ({})) as { error?: string }
+    if (!response.ok) {
+      return { ok: false, error: payload.error ?? `Factory reset failed (HTTP ${response.status})` }
+    }
+    return { ok: true }
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : 'Factory reset request failed.',
+    }
+  }
+}
+
 export default function SettingsPage() {
   const { user, signOut } = useAuth()
   const [currentPassword, setCurrentPassword] = useState('')
@@ -10,6 +45,11 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+  const [factoryResetPhrase, setFactoryResetPhrase] = useState('')
+  const [factoryResetPassword, setFactoryResetPassword] = useState('')
+  const [factoryResetLoading, setFactoryResetLoading] = useState(false)
+  const [factoryResetMessage, setFactoryResetMessage] = useState('')
+  const [factoryResetError, setFactoryResetError] = useState('')
 
   async function handleChangePassword(e: React.FormEvent) {
     e.preventDefault()
@@ -52,6 +92,52 @@ export default function SettingsPage() {
       setConfirmPassword('')
     }
     setLoading(false)
+  }
+
+  async function handleFactoryReset(e: React.FormEvent) {
+    e.preventDefault()
+    setFactoryResetError('')
+    setFactoryResetMessage('')
+
+    if (factoryResetPhrase.trim() !== 'RESET EVERYTHING') {
+      setFactoryResetError('Type RESET EVERYTHING to confirm the factory reset.')
+      return
+    }
+    if (!user?.email) {
+      setFactoryResetError('You must be signed in to reset the app.')
+      return
+    }
+
+    const confirmed = window.confirm(
+      'This will permanently delete all cards, price history, watchlist entries, transactions, and discovery queue data for every user.\n\n' +
+        'Your login account will remain. This cannot be undone. Continue?'
+    )
+    if (!confirmed) return
+
+    setFactoryResetLoading(true)
+
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email: user.email,
+      password: factoryResetPassword,
+    })
+
+    if (signInError) {
+      setFactoryResetError('Current password is incorrect.')
+      setFactoryResetLoading(false)
+      return
+    }
+
+    const result = await triggerFactoryReset()
+    if (!result.ok) {
+      setFactoryResetError(result.error ?? 'Factory reset failed.')
+      setFactoryResetLoading(false)
+      return
+    }
+
+    setFactoryResetMessage('Factory reset complete. All app data has been deleted.')
+    setFactoryResetPhrase('')
+    setFactoryResetPassword('')
+    setFactoryResetLoading(false)
   }
 
   return (
@@ -131,6 +217,71 @@ export default function SettingsPage() {
           <button type="button" onClick={signOut} className="btn btn-ghost" style={{ marginTop: '0.75rem' }}>
             Sign Out
           </button>
+        </div>
+
+        <div className="lp-card" style={{ marginTop: '1rem', borderColor: 'var(--danger)' }}>
+          <h2 style={{ fontSize: '1rem', fontWeight: 800, marginBottom: '0.5rem', color: 'var(--danger)' }}>
+            Factory Reset
+          </h2>
+          <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: '0.75rem' }}>
+            Permanently deletes all cards, price history, watchlist entries, transactions,
+            and discovery queue data for every user. Your login account stays.
+          </p>
+          <p style={{ fontSize: '0.8rem', color: 'var(--danger)', fontWeight: 700, marginBottom: '1rem' }}>
+            This cannot be undone.
+          </p>
+
+          <form onSubmit={handleFactoryReset} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <div>
+              <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem', display: 'block' }}>
+                Type RESET EVERYTHING
+              </label>
+              <input
+                type="text"
+                className="input"
+                value={factoryResetPhrase}
+                onChange={e => setFactoryResetPhrase(e.target.value)}
+                placeholder="RESET EVERYTHING"
+                autoCapitalize="characters"
+                autoCorrect="off"
+                spellCheck={false}
+                required
+              />
+            </div>
+
+            <div>
+              <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.25rem', display: 'block' }}>
+                Current Password
+              </label>
+              <input
+                type="password"
+                className="input"
+                value={factoryResetPassword}
+                onChange={e => setFactoryResetPassword(e.target.value)}
+                required
+              />
+            </div>
+
+            {factoryResetError && (
+              <div style={{ color: 'var(--danger)', fontSize: '0.8rem', padding: '0.625rem 0.75rem', background: 'rgba(212,120,120,0.1)', borderRadius: 10, fontWeight: 600 }}>
+                {factoryResetError}
+              </div>
+            )}
+            {factoryResetMessage && (
+              <div style={{ color: 'var(--success)', fontSize: '0.8rem', padding: '0.625rem 0.75rem', background: 'rgba(124,184,140,0.1)', borderRadius: 10, fontWeight: 600 }}>
+                {factoryResetMessage}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              className="btn btn-danger"
+              style={{ alignSelf: 'flex-start' }}
+              disabled={factoryResetLoading}
+            >
+              {factoryResetLoading ? 'Resetting...' : 'Reset Factory Settings'}
+            </button>
+          </form>
         </div>
       </div>
     </div>

@@ -502,46 +502,6 @@ export default function DatabaseValidationPage() {
     void load()
   }, [load])
 
-  // Live refresh — poll the validation data every 10s while the
-  // tab is open. Why polling instead of Supabase Realtime?
-  //   1. Zero infra cost: no realtime publication changes, no new
-  //      channel subscriptions, no RLS filter wiring.
-  //   2. ~10s latency is invisible for the use case here — the
-  //      discover worker itself takes ~2-3 min per card, so by
-  //      the time a row changes, 10s lag is noise.
-  //   3. The page is already doing 3 parallel queries on mount;
-  //      running that same load() on a timer reuses everything.
-  //
-  // Cost: ~18 queries/minute while the tab is open (3 queries ×
-  // 6 polls). Free tier allows ~unlimited REST calls; this is
-  // trivial.
-  //
-  // We pause polling when:
-  //   - the tab is hidden (browsers throttle setInterval anyway,
-  //     but visibilitychange lets us stop the DB load entirely
-  //     when the user is on another tab)
-  //   - the page is loading (no need to fire while a load is
-  //     already in flight)
-  useEffect(() => {
-    let cancelled = false
-    const tick = () => {
-      if (cancelled) return
-      if (document.hidden) return
-      if (loading) return
-      void load()
-    }
-    const id = window.setInterval(tick, 10_000)
-    const onVisibility = () => {
-      if (!document.hidden) tick() // catch up immediately on focus
-    }
-    document.addEventListener('visibilitychange', onVisibility)
-    return () => {
-      cancelled = true
-      window.clearInterval(id)
-      document.removeEventListener('visibilitychange', onVisibility)
-    }
-  }, [load, loading])
-
   // ─── Filter pipeline ──────────────────────────────────────────────────────
   // Each entry carries the card's original position in `rows` so the cursor
   // (which indexes `rows`, not `filtered`) stays stable across filter changes.

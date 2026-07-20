@@ -1067,7 +1067,9 @@ const gridTemplateColumns =
                       ? `Discovering ${total} card${total === 1 ? '' : 's'} on SNKRDUNK…`
                       : total > 0
                         ? `Queued ${queuedLabelCount} card${queuedLabelCount === 1 ? '' : 's'} for SNKRDUNK lookup`
-                    : `${pendingDiscoveryCount} card${pendingDiscoveryCount === 1 ? '' : 's'} need SNKRDUNK lookup`}
+                    : pendingDiscoveryCount === 1
+                      ? '1 card needs a SNKRDUNK lookup'
+                      : `${pendingDiscoveryCount} cards need SNKRDUNK lookup`}
                 </div>
                 <div
                   style={{
@@ -1076,17 +1078,17 @@ const gridTemplateColumns =
                     marginTop: 2,
                   }}
                 >
-                  These cards have no <code>snkrdunk_apparel_id</code> yet.
+                  {pendingDiscoveryCount === 1 ? 'This card has' : 'These cards have'} no <code>snkrdunk_apparel_id</code> yet.
                   {total > 0 || discoverStarting
                     ? (
                       <>
                         {' '}The SNKRDUNK lookup worker is running{' '}
-                        on them. They&rsquo;ll appear in the Unverified tab once matched.
+                        on {pendingDiscoveryCount === 1 ? 'it' : 'them'}. They&rsquo;ll appear in the Unverified tab once matched.
                       </>
                     )
                     : (
                       <>
-                        {' '}Click <strong>Discover now</strong> to confirm and queue the SNKRDUNK lookup for these cards.
+                        {' '}Click <strong>Discover now</strong> to confirm and queue the SNKRDUNK lookup for {pendingDiscoveryCount === 1 ? 'this card' : 'these cards'}.
                       </>
                     )}
                 </div>

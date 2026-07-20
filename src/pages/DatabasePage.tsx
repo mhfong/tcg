@@ -313,7 +313,7 @@ export default function DatabasePage() {
             ? `The configured public proxy at ${configuredPublicParseUrls[0]} is blocked. `
             : `The configured public proxies at ${configuredPublicParseUrls.join(', ')} are blocked. `) +
         'This is an origin block at yuyu-tei, not a bad series slug. ' +
-        'Redeploy the proxy to a different public host or region, then update VITE_YUYUTEI_PARSE_URL. See scripts/PROXY_DEPLOY.md.'
+        'Redeploy the proxy to a different public host or region, then update the proxy URL setting in your hosting dashboard.'
       )
     }
 
@@ -330,7 +330,7 @@ export default function DatabasePage() {
       (configuredIsLocal
         ? 'The current configuration points at localhost. Replace it with a public proxy /parse URL. '
         : 'Deploy the proxy publicly and rebuild with its /parse URL. ') +
-      'See scripts/PROXY_DEPLOY.md.'
+      'See the deployment guide in your project docs.'
     )
   }
 
@@ -1306,7 +1306,7 @@ export default function DatabasePage() {
                     {configuredPublicParseUrls.join(', ')}. If yuyu-tei blocks that
                     host with HTTP 403, deploy another public proxy host or region,
                     then update <code>VITE_YUYUTEI_PARSE_URL</code>. See{' '}
-                    <code>scripts/PROXY_DEPLOY.md</code>.
+                    <code>PROXY_DEPLOY.md</code>.
                   </div>
                 )}
                 {configuredPublicParseUrls.length === 0 &&
@@ -1328,7 +1328,7 @@ export default function DatabasePage() {
                     The backend is currently configured as <code>{configuredParseUrls[0]}</code>,
                     which is localhost-only. Replace it with a public proxy /parse
                     URL so this app does not depend on this Mac. See{' '}
-                    <code>scripts/PROXY_DEPLOY.md</code> for deployment options.
+                    <code>PROXY_DEPLOY.md</code> for deployment options.
                   </div>
                 )}
                 {configuredParseUrls.length === 0 && (

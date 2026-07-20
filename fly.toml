@@ -4,7 +4,7 @@
 #
 
 app = 'yuyutei-parse'
-primary_region = 'nrt'
+primary_region = 'sin'
 
 [build]
   dockerfile = 'Dockerfile'

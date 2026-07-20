@@ -1614,24 +1614,6 @@ const gridTemplateColumns =
             <button
               type="button"
               className="btn btn-ghost"
-              onClick={() => {
-                if (currentCard.snkrdunk_apparel_id) {
-                  setMetaCache(prev => {
-                    const n = { ...prev }
-                    delete n[currentCard.snkrdunk_apparel_id ?? '']
-                    return n
-                  })
-                  void prefetchMeta(currentCard.snkrdunk_apparel_id)
-                }
-              }}
-              disabled={!currentCard.snkrdunk_apparel_id}
-              title="Discard cached SNKRDUNK metadata and re-fetch"
-            >
-              {currentMetaLoading ? 'Refreshing…' : '↻ Refresh image'}
-            </button>
-            <button
-              type="button"
-              className="btn btn-ghost"
               onClick={() => goToNextUnverified()}
               title="Skip to next unverified card"
             >

@@ -79,6 +79,31 @@ function snkrdunkProxiedImageUrl(rawUrl: string): string {
   return `${baseUrl}/image?u=${encodeURIComponent(rawUrl)}`
 }
 
+// The SNKRDUNK image proxy sometimes returns HTTP 502 because
+// cdn.snkrdunk.com blocks the Supabase edge IP. When that
+// happens the browser falls back to the direct (un-proxied)
+// SNKRDUNK URL. The direct URL is CORS-tainted so the canvas
+// crop will not run, but the user still sees the image with its
+// original padding. We also remember this in a module-level set
+// so subsequent cards don't re-attempt the failing proxy.
+const snkrdunkProxyFailedHosts = new Set<string>()
+function snkrdunkImageSrc(rawUrl: string): string {
+  try {
+    const host = new URL(rawUrl).host
+    if (snkrdunkProxyFailedHosts.has(host)) return rawUrl
+  } catch {
+    // Ignore -- fall through to the proxied URL.
+  }
+  return snkrdunkProxiedImageUrl(rawUrl)
+}
+function markSnkrdunkProxyFailed(rawUrl: string) {
+  try {
+    snkrdunkProxyFailedHosts.add(new URL(rawUrl).host)
+  } catch {
+    // Ignore -- nothing useful to do.
+  }
+}
+
 /**
  * Crop whitespace and transparency from all four sides of an
  * HTMLImageElement. Returns a cropped PNG data URL, or null if no
@@ -1578,7 +1603,7 @@ const gridTemplateColumns =
                     : '—',
                 ],
               ]}
-              imageUrl={currentMeta?.image ? snkrdunkProxiedImageUrl(currentMeta.image) : ''}
+              imageUrl={currentMeta?.image ? snkrdunkImageSrc(currentMeta.image) : ''}
               imageLabel="SNKRDUNK product image"
               fallbackHint={`snkrdunk.com/apparels/${currentCard.snkrdunk_apparel_id}`}
               href={
@@ -1589,6 +1614,23 @@ const gridTemplateColumns =
               loading={currentMetaLoading}
               cropWhite
               onImageLoad={img => reportImageMetrics(img, 'snkrdunk')}
+              onImageError={() => {
+                // The proxy returned 5xx. Mark this host as failed
+                // and reload with the direct SNKRDUNK URL so the user
+                // at least sees the image. Crop will be skipped
+                // because the direct image is CORS-tainted.
+                if (currentMeta?.image) {
+                  markSnkrdunkProxyFailed(currentMeta.image)
+                  // Bump the cache to force a re-render with the
+                  // direct URL.
+                  setMetaCache(prev => {
+                    const id = currentCard.snkrdunk_apparel_id ?? ''
+                    const m = prev[id]
+                    if (!m) return prev
+                    return { ...prev, [id]: { ...m, image: m.image } }
+                  })
+                }
+              }}
             />
           </div>
 
@@ -1786,6 +1828,7 @@ function CardSide({
   loading,
   cropWhite = false,
   onImageLoad,
+  onImageError,
 }: {
   title: string
   metaLines: [string, string][]
@@ -1810,6 +1853,13 @@ function CardSide({
    * images render at the same visual height.
    */
   onImageLoad?: (img: HTMLImageElement) => void
+  /**
+   * Fires when the <img> errors (e.g. the proxy returned 5xx and
+   * the browser fell back to the direct URL, or any other load
+   * failure). The parent can use this to mark the proxy as
+   * failed and retry with a different source.
+   */
+  onImageError?: () => void
 }) {
   // Memoized cache of original-URL → cropped data URL, so the crop only
   // runs once per distinct image (not on every render). Keyed by the
@@ -1912,6 +1962,7 @@ function CardSide({
               t.style.display = 'none'
               const placeholder = t.nextElementSibling as HTMLElement | null
               if (placeholder) placeholder.style.display = 'flex'
+              onImageError?.()
             }}
           />
         ) : null}

@@ -41,7 +41,10 @@ const ALLOWED_APPAREL_RE = /^\d{4,8}$/
 const SNKRDUNK_PAGE = (id: string) => `https://snkrdunk.com/apparels/${id}`
 const CORS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  // GET is required because the <img> tag issues a plain GET. Without
+  // it the browser preflight blocks the image. HEAD is allowed so
+  // health checks (curl -I) and CDN probes work.
+  "Access-Control-Allow-Methods": "GET, HEAD, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization, apikey",
 }
 
@@ -168,18 +171,48 @@ async function handle(req: Request): Promise<Response> {
     if (!/^https?:\/\//.test(target)) {
       return jsonResponse({ error: "u must be an http(s) URL" }, 400)
     }
+    // cdn.snkrdunk.com blocks some cloud / edge IPs with HTTP 403.
+    // We try a plain request first and, on 403, retry with a fuller
+    // browser-like header set (Referer, sec-ch-* hints). This isn't
+    // guaranteed to bypass the block but it has historically unblocked
+    // most cdn.snkrdunk.com edges. If both attempts 403, the caller
+    // gets a clear error and can fall back to the un-proxied URL
+    // (which is CORS-tainted but at least renders).
+    const baseHeaders: Record<string, string> = {
+      "User-Agent":
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) " +
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+      "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+    }
+    const browserHeaders: Record<string, string> = {
+      ...baseHeaders,
+      "Referer": "https://snkrdunk.com/",
+      "sec-ch-ua":
+        '"Chromium";v="124", "Not-A.Brand";v="99", "Google Chrome";v="124"',
+      "sec-ch-ua-mobile": "?0",
+      "sec-ch-ua-platform": '"macOS"',
+      "sec-fetch-dest": "image",
+      "sec-fetch-mode": "no-cors",
+      "sec-fetch-site": "same-site",
+    }
+    async function tryFetch(headers: Record<string, string>) {
+      return await fetch(target, { headers, redirect: "follow" })
+    }
     try {
-      const r = await fetch(target, {
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) " +
-            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
-          "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
-        },
-        redirect: "follow",
-      })
+      let r = await tryFetch(baseHeaders)
+      if (r.status === 403) r = await tryFetch(browserHeaders)
       if (!r.ok) {
-        return jsonResponse({ error: `upstream ${r.status}` }, 502)
+        return jsonResponse(
+          {
+            error: `upstream ${r.status}`,
+            upstream_status: r.status,
+            upstream_url: target,
+            hint: r.status === 403
+              ? "cdn.snkrdunk.com is blocking this edge IP. The image will render without cropping."
+              : `upstream returned ${r.status}`,
+          },
+          502,
+        )
       }
       const body = await r.arrayBuffer()
       const ct = r.headers.get("content-type") ?? "application/octet-stream"

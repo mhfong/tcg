@@ -127,8 +127,29 @@ def parse_yuyutei_card(url: str) -> dict:  # noqa: C901  (extraction, kept toget
     try:
         r = httpx.get(url, headers=headers, timeout=15.0, follow_redirects=True)
         r.raise_for_status()
-    except httpx.HTTPError as e:
-        return {"error": f"Fetch failed: {e}"}
+    except httpx.HTTPStatusError as e:
+        status = e.response.status_code
+        upstream_url = str(e.request.url) if e.request else url
+        if status == 403 and "yuyu-tei.jp" in upstream_url:
+            return {
+                "error": "yuyu-tei blocked this proxy host/IP with HTTP 403.",
+                "status": status,
+                "upstream_status": status,
+                "upstream_url": upstream_url,
+                "hint": "Deploy the proxy to a different public host or region.",
+            }
+        return {
+            "error": f"Fetch failed: {e}",
+            "status": status,
+            "upstream_status": status,
+            "upstream_url": upstream_url,
+        }
+    except httpx.RequestError as e:
+        return {
+            "error": f"Fetch failed: {e}",
+            "status": 502,
+            "upstream_url": str(e.request.url) if e.request else url,
+        }
 
     html = r.text
 

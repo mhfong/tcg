@@ -26,6 +26,8 @@ import json
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import httpx
+
 from scraper import parse_yuyutei_card
 from scrape_set import (
     fetch_cards_in_rarity,
@@ -33,6 +35,33 @@ from scrape_set import (
     list_rarities,
     list_rarities_for_series,
 )
+
+
+def error_response_for_exception(exc: Exception) -> tuple[int, dict]:
+    if isinstance(exc, httpx.HTTPStatusError):
+        status = exc.response.status_code
+        url = str(exc.request.url) if exc.request else ""
+        if status == 403 and "yuyu-tei.jp" in url:
+            return status, {
+                "error": "yuyu-tei blocked this proxy host/IP with HTTP 403.",
+                "upstream_status": status,
+                "upstream_url": url,
+                "hint": "Deploy the proxy to a different public host or region.",
+            }
+        return status, {
+            "error": str(exc),
+            "upstream_status": status,
+            "upstream_url": url,
+        }
+
+    if isinstance(exc, httpx.RequestError):
+        url = str(exc.request.url) if exc.request else ""
+        return 502, {
+            "error": f"Request to upstream failed: {exc}",
+            "upstream_url": url,
+        }
+
+    return 500, {"error": str(exc)}
 
 
 class ParseHandler(BaseHTTPRequestHandler):
@@ -74,10 +103,15 @@ class ParseHandler(BaseHTTPRequestHandler):
             try:
                 card = parse_yuyutei_card(url)
             except Exception as e:
-                self._send_json({"error": str(e)}, 500)
+                status, payload = error_response_for_exception(e)
+                self._send_json(payload, status)
                 return
             if "error" in card:
-                self._send_json(card, 400)
+                payload = dict(card)
+                status = payload.pop("status", 400)
+                if not isinstance(status, int):
+                    status = 400
+                self._send_json(payload, status)
                 return
             self._send_json(card, 200)
             return
@@ -102,7 +136,8 @@ class ParseHandler(BaseHTTPRequestHandler):
                 else:
                     result = list_rarities_for_series(series)
             except Exception as e:
-                self._send_json({"error": str(e)}, 500)
+                status, payload = error_response_for_exception(e)
+                self._send_json(payload, status)
                 return
             self._send_json(result, 200)
             return
@@ -135,7 +170,8 @@ class ParseHandler(BaseHTTPRequestHandler):
                         series, rarity
                     )
             except Exception as e:
-                self._send_json({"error": str(e)}, 500)
+                status, payload = error_response_for_exception(e)
+                self._send_json(payload, status)
                 return
             self._send_json(result, 200)
             return

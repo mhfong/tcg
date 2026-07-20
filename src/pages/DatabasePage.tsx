@@ -18,7 +18,27 @@ interface PreviewCard {
   image_url: string
 }
 
+interface YuyuteiRaritiesResponse {
+  tcg?: 'poc' | 'opc'
+  series?: string
+  rarities?: string[]
+}
+
+interface YuyuteiCardsResponse {
+  cards?: Array<{
+    card_index: string
+    card_name: string
+    url_yuyutei: string
+  }>
+}
+
 type Stage = 'input' | 'preview'
+
+type ParseProxyMode = 'blocked' | 'network'
+type ParseProxyError = Error & {
+  attempts?: string[]
+  proxyMode?: ParseProxyMode
+}
 
 function isValidYuyuteiUrl(url: string): boolean {
   if (!url) return false
@@ -30,10 +50,132 @@ function isValidYuyuteiUrl(url: string): boolean {
   }
 }
 
-// Local dev fallback so you can test the flow without deploying the Edge Function.
-// Set VITE_YUYUTEI_PARSE_URL to your deployed function URL, e.g.
-//   VITE_YUYUTEI_PARSE_URL=https://<project>.supabase.co/functions/v1/yuyutei-parse
+// Point this at one or more full proxy URLs that serve /parse, e.g.
+//   VITE_YUYUTEI_PARSE_URL=https://yuyutei-parse.fly.dev/parse
 const PARSE_URL = import.meta.env.VITE_YUYUTEI_PARSE_URL as string | undefined
+
+function isLocalParseUrl(url: string): boolean {
+  return /127\.0\.0\.1|localhost/i.test(url)
+}
+
+function getConfiguredParseUrls(): string[] {
+  return Array.from(
+    new Set(
+      (PARSE_URL ?? '')
+        .split(/[\s,]+/)
+        .map(url => url.trim())
+        .filter(Boolean),
+    ),
+  )
+}
+
+function parseProxyBaseUrl(url: string): string {
+  return url.replace(/\/parse\/?$/, '')
+}
+
+function getParseProxyCandidates(): string[] {
+  return getConfiguredParseUrls()
+}
+
+function isBlockedByYuyutei(message: string): boolean {
+  return /403 Forbidden/i.test(message) && /yuyu-tei\.jp/i.test(message)
+}
+
+function isNetworkLikeError(e: unknown): boolean {
+  const raw = e instanceof Error ? e.message : String(e)
+  return (
+    /failed to fetch|load failed|networkerror|network request failed/i.test(raw) ||
+    (e instanceof TypeError && !/json/i.test(raw))
+  )
+}
+
+function makeParseProxyError(
+  message: string,
+  options: { attempts?: string[]; proxyMode?: ParseProxyMode } = {},
+): ParseProxyError {
+  const error = new Error(message) as ParseProxyError
+  error.attempts = options.attempts
+  error.proxyMode = options.proxyMode
+  return error
+}
+
+function readParseErrorMessage(data: unknown, status: number): string {
+  if (
+    typeof data === 'object' &&
+    data !== null &&
+    'error' in data &&
+    typeof data.error === 'string'
+  ) {
+    return data.error
+  }
+  return `HTTP ${status}`
+}
+
+async function requestParseJson<T>(
+  path: '/parse' | '/set-rarities' | '/set-cards',
+  body: Record<string, string>,
+): Promise<T> {
+  const candidates = getParseProxyCandidates()
+  if (candidates.length === 0) {
+    throw makeParseProxyError(
+      'VITE_YUYUTEI_PARSE_URL is not configured. Set it to a public proxy /parse URL.',
+    )
+  }
+  const attempts: string[] = []
+  let blockedError: ParseProxyError | null = null
+  let networkError: ParseProxyError | null = null
+
+  for (const parseUrl of candidates) {
+    const endpoint =
+      path === '/parse' ? parseUrl : `${parseProxyBaseUrl(parseUrl)}${path}`
+    attempts.push(endpoint)
+    try {
+      const r = await fetch(endpoint, {
+        method: 'POST',
+        // text/plain avoids a CORS preflight in Safari; the body is still
+        // valid JSON and the Python proxy parses it the same way.
+        headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+        body: JSON.stringify(body),
+      })
+      const data: unknown = await r.json().catch(() => ({}))
+      if (!r.ok) {
+        const message = readParseErrorMessage(data, r.status)
+        if (isBlockedByYuyutei(message)) {
+          blockedError = makeParseProxyError(message, {
+            attempts: [...attempts],
+            proxyMode: 'blocked',
+          })
+          continue
+        }
+        throw makeParseProxyError(message, { attempts: [...attempts] })
+      }
+      return data as T
+    } catch (e) {
+      const raw = e instanceof Error ? e.message : String(e)
+      if (isBlockedByYuyutei(raw)) {
+        blockedError = makeParseProxyError(raw, {
+          attempts: [...attempts],
+          proxyMode: 'blocked',
+        })
+        continue
+      }
+      if (isNetworkLikeError(e)) {
+        networkError = makeParseProxyError(raw, {
+          attempts: [...attempts],
+          proxyMode: 'network',
+        })
+        continue
+      }
+      throw e
+    }
+  }
+
+  if (blockedError) throw blockedError
+  if (networkError) throw networkError
+  throw makeParseProxyError('Unable to reach the yuyu-tei proxy.', {
+    attempts,
+  })
+}
 
 // Substring match against any of the user-visible fields. Case-insensitive.
 // Used both by the review-table filter and by the "select all/none"
@@ -51,6 +193,10 @@ function matchesReviewSearch(c: PreviewCard, q: string): boolean {
 
 export default function DatabasePage() {
   const { user } = useAuth()
+  const configuredParseUrls = getConfiguredParseUrls()
+  const configuredPublicParseUrls = configuredParseUrls.filter(
+    url => !isLocalParseUrl(url),
+  )
   const [cards, setCards] = useState<CardDefinition[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -146,30 +292,45 @@ export default function DatabasePage() {
   // message explaining what the user actually needs to do.
   function explainNetworkError(e: unknown): string {
     const raw = e instanceof Error ? e.message : String(e)
-    const looksLikeNetwork =
-      /failed to fetch|load failed|networkerror|network request failed/i.test(raw) ||
-      // `TypeError` is what `fetch()` throws on a connection failure.
-      (e instanceof TypeError && !/json/i.test(raw))
+    const proxyError = e as ParseProxyError
+    const attempts = Array.isArray(proxyError.attempts) ? proxyError.attempts : []
+    const configuredIsLocal =
+      configuredParseUrls.length > 0 &&
+      configuredParseUrls.every(url => isLocalParseUrl(url))
+
+    if (/VITE_YUYUTEI_PARSE_URL is not configured/i.test(raw)) {
+      return (
+        'The yuyu-tei import proxy is not configured. Set VITE_YUYUTEI_PARSE_URL to one or more public /parse URLs and rebuild the app.'
+      )
+    }
+
+    if (proxyError.proxyMode === 'blocked' || isBlockedByYuyutei(raw)) {
+      return (
+        'The yuyu-tei proxy is reachable, but yuyu-tei is blocking the current host/IP with HTTP 403. ' +
+        (configuredPublicParseUrls.length === 0
+          ? ''
+          : configuredPublicParseUrls.length === 1
+            ? `The configured public proxy at ${configuredPublicParseUrls[0]} is blocked. `
+            : `The configured public proxies at ${configuredPublicParseUrls.join(', ')} are blocked. `) +
+        'This is an origin block at yuyu-tei, not a bad series slug. ' +
+        'Redeploy the proxy to a different public host or region, then update VITE_YUYUTEI_PARSE_URL. See scripts/PROXY_DEPLOY.md.'
+      )
+    }
+
+    const looksLikeNetwork = isNetworkLikeError(e)
     if (!looksLikeNetwork) return raw
 
-    const url = PARSE_URL ?? '(not configured)'
-    const isLocal = /127\.0\.0\.1|localhost/i.test(url)
-    // Non-localhost URL that the browser can't reach is almost always
-    // a "proxy not deployed yet" situation — give a more specific fix.
-    const isPublicHost = !isLocal
+    const urls = attempts.length > 0 ? attempts : getParseProxyCandidates()
+    const publicUrls = urls.filter(url => !isLocalParseUrl(url))
     return (
-      "Can't reach the yuyu-tei proxy at " +
-      url +
-      '. The Import from yuyu-tei feature needs a small proxy server ' +
-      "because yuyu-tei blocks the deployed site's IP. " +
-      (isPublicHost
-        ? 'The URL in VITE_YUYUTEI_PARSE_URL points to a public host, ' +
-          'but the proxy doesn\'t seem to be running there. ' +
-          'If you haven\'t deployed yet, follow scripts/PROXY_DEPLOY.md ' +
-          '(Fly.io / Render / VPS) to deploy it. '
-        : 'To fix: (1) run `python scripts/parse_server.py` on the same ' +
-          'machine as your browser, OR (2) deploy the proxy publicly and ' +
-          'point VITE_YUYUTEI_PARSE_URL at it. See scripts/PROXY_DEPLOY.md. ')
+      "Can't reach the yuyu-tei proxy. " +
+      (publicUrls.length > 0
+        ? `The app tried ${publicUrls.join(', ')}. `
+        : '') +
+      (configuredIsLocal
+        ? 'The current configuration points at localhost. Replace it with a public proxy /parse URL. '
+        : 'Deploy the proxy publicly and rebuild with its /parse URL. ') +
+      'See scripts/PROXY_DEPLOY.md.'
     )
   }
 
@@ -181,27 +342,12 @@ export default function DatabasePage() {
     setError(null)
     setImporting(true)
     try {
-      if (!PARSE_URL) {
-        throw new Error(
-          'VITE_YUYUTEI_PARSE_URL is not configured. ' +
-            'Set it in .env (local) or rebuild with a public proxy URL.',
-        )
-      }
       // The backend auto-detects the TCG from the series slug; we just
       // pass the series and learn the TCG from the response.
-      // NOTE: Content-Type is `text/plain` (not `application/json`) so the
-      // browser treats this as a "simple" POST and skips the CORS
-      // preflight. The Fly edge proxy intercepts OPTIONS preflights and
-      // serves a bare 204 without our CORS headers, which Safari rejects.
-      // Sending `text/plain` is a standard workaround — the body is still
-      // valid JSON and the Python server parses it identically.
-      const r = await fetch(`${PARSE_URL.replace('/parse', '')}/set-rarities`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
-        body: JSON.stringify({ series: importSeries.trim() }),
-      })
-      const data = await r.json()
-      if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`)
+      const data = await requestParseJson<YuyuteiRaritiesResponse>(
+        '/set-rarities',
+        { series: importSeries.trim() },
+      )
       // Filter out raw "-" placeholder (the OPCG DON section header on
       // yuyu-tei) — the synthetic "GOLD-DON" entry replaces it for users.
       const rarities = (data.rarities ?? []).filter(
@@ -238,26 +384,15 @@ export default function DatabasePage() {
     setImporting(true)
     setImportedCards([])
     try {
-      if (!PARSE_URL) {
-        throw new Error(
-          'VITE_YUYUTEI_PARSE_URL is not configured. ' +
-            'Set it in .env (local) or rebuild with a public proxy URL.',
-        )
-      }
       const tcg = detectedTcg
       // Use the resolved (possibly padded) series for everything below.
       const seriesSlug = resolvedSeries || importSeries.trim().toLowerCase()
       const collected: PreviewCard[] = []
       for (const rarity of importRarities) {
-        const r = await fetch(`${PARSE_URL.replace('/parse', '')}/set-cards`, {
-          method: 'POST',
-          // text/plain to avoid CORS preflight — see comment in
-          // loadRaritiesForSeries() above.
-          headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
-          body: JSON.stringify({ series: seriesSlug, rarity }),
-        })
-        const data = await r.json()
-        if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`)
+        const data = await requestParseJson<YuyuteiCardsResponse>(
+          '/set-cards',
+          { series: seriesSlug, rarity },
+        )
         for (const card of data.cards ?? []) {
           collected.push({
             tcg_type: tcg,
@@ -418,26 +553,28 @@ export default function DatabasePage() {
     setParsing(true)
     try {
       let result: PreviewCard
-      if (PARSE_URL) {
-        const r = await fetch(PARSE_URL, {
-          method: 'POST',
-          // text/plain to avoid CORS preflight — see comment in
-          // loadRaritiesForSeries() above.
-          headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
-          body: JSON.stringify({ url }),
-        })
-        const data = await r.json()
-        if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`)
-        result = data as PreviewCard
-      } else {
-        // Dev fallback: use the Python parser via a tiny relative endpoint,
-        // or if neither is available, fall back to URL-only extraction.
-        result = await parseLocally(url)
+      try {
+        result = await requestParseJson<PreviewCard>('/parse', { url })
+      } catch (e) {
+        if (
+          (e as ParseProxyError).proxyMode === 'blocked' ||
+          (e as ParseProxyError).proxyMode === 'network'
+        ) {
+          // Last-resort fallback: extract what we can from the URL alone.
+          // This keeps single-card entry usable even when a public proxy is
+          // blocked or the local proxy is not running.
+          setSuccess(
+            'The yuyu-tei proxy could not fetch full card details, so only the image and series were filled from the URL. Please complete the remaining fields manually.',
+          )
+          result = await parseLocally(url)
+        } else {
+          throw e
+        }
       }
       setPreview(result)
       setStage('preview')
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(explainNetworkError(e))
     } finally {
       setParsing(false)
     }
@@ -1149,7 +1286,7 @@ export default function DatabasePage() {
 
             {importStage === 'select' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
-                {PARSE_URL && /127\.0\.0\.1|localhost/i.test(PARSE_URL) && (
+                {configuredPublicParseUrls.length > 0 && (
                   <div
                     style={{
                       fontSize: '0.75rem',
@@ -1162,13 +1299,55 @@ export default function DatabasePage() {
                     }}
                   >
                     <strong style={{ color: 'var(--text-primary)' }}>
-                      Local proxy required.
+                      Public proxy configured.
                     </strong>{' '}
-                    The backend at <code>{PARSE_URL}</code> only works when
-                    <code> scripts/parse_server.py</code> is running on the same
-                    machine as your browser. If you opened this site on a phone or
-                    another device, the import will fail. See{' '}
-                    <code>scripts/PROXY_DEPLOY.md</code> for a public-deploy option.
+                    The configured public proxy
+                    {configuredPublicParseUrls.length === 1 ? '' : ' proxies'}{' '}
+                    {configuredPublicParseUrls.join(', ')}. If yuyu-tei blocks that
+                    host with HTTP 403, deploy another public proxy host or region,
+                    then update <code>VITE_YUYUTEI_PARSE_URL</code>. See{' '}
+                    <code>scripts/PROXY_DEPLOY.md</code>.
+                  </div>
+                )}
+                {configuredPublicParseUrls.length === 0 &&
+                  configuredParseUrls.some(url => isLocalParseUrl(url)) && (
+                  <div
+                    style={{
+                      fontSize: '0.75rem',
+                      color: 'var(--text-secondary)',
+                      background: 'rgba(155, 184, 224, 0.08)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 6,
+                      padding: '0.5rem 0.75rem',
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    <strong style={{ color: 'var(--text-primary)' }}>
+                      Public proxy required.
+                    </strong>{' '}
+                    The backend is currently configured as <code>{configuredParseUrls[0]}</code>,
+                    which is localhost-only. Replace it with a public proxy /parse
+                    URL so this app does not depend on this Mac. See{' '}
+                    <code>scripts/PROXY_DEPLOY.md</code> for deployment options.
+                  </div>
+                )}
+                {configuredParseUrls.length === 0 && (
+                  <div
+                    style={{
+                      fontSize: '0.75rem',
+                      color: 'var(--text-secondary)',
+                      background: 'rgba(212, 120, 120, 0.08)',
+                      border: '1px solid rgba(212, 120, 120, 0.25)',
+                      borderRadius: 6,
+                      padding: '0.5rem 0.75rem',
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    <strong style={{ color: 'var(--danger)' }}>
+                      Public proxy required.
+                    </strong>{' '}
+                    Set <code>VITE_YUYUTEI_PARSE_URL</code> to a public proxy
+                    <code> /parse</code> URL before using yuyu-tei import.
                   </div>
                 )}
                 <div className="form-field">

@@ -37,12 +37,12 @@ This feature bulk-imports cards from [yuyu-tei.jp](https://yuyu-tei.jp)
 set pages. It needs a small HTTP proxy because yuyu-tei returns HTTP 403
 to most cloud-provider IPs (including the GitHub Pages origin).
 
-The default config points at `http://127.0.0.1:8787/parse` for local
-development. That URL only works when `scripts/parse_server.py` is
-running on the same machine as your browser. From a phone or another
-device it fails with `ERR_CONNECTION_REFUSED` — this is **not** a
-Safari/Chrome bug, it's because `127.0.0.1` is always the *current*
-device's loopback.
+If you explicitly point `VITE_YUYUTEI_PARSE_URL` at
+`http://127.0.0.1:8787/parse`, that only works when
+`scripts/parse_server.py` is running on the same machine as your
+browser. From a phone or another device it fails with
+`ERR_CONNECTION_REFUSED` — this is **not** a Safari/Chrome bug, it's
+because `127.0.0.1` is always the *current* device's loopback.
 
 To use the feature on a phone or other device, deploy the proxy to a
 public host:
@@ -55,7 +55,9 @@ public host:
   [scripts/PROXY_DEPLOY.md → Option C](scripts/PROXY_DEPLOY.md#option-c--run-on-your-own-vps)
 
 After deploying, set `VITE_YUYUTEI_PARSE_URL` in `.env` to the public
-URL and rebuild.
+`/parse` URL and rebuild. You can also provide multiple public proxy
+URLs as a comma-separated list; the app will try them in order. There
+is no automatic localhost fallback.
 
 ## Project layout
 
@@ -79,7 +81,9 @@ fly.toml            Fly.io config for the proxy
 
 See [`.env.example`](.env.example) for the full list. Required for
 local dev: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`. Optional:
-`VITE_YUYUTEI_PARSE_URL` (defaults to `http://127.0.0.1:8787/parse`).
+`VITE_YUYUTEI_PARSE_URL` as one `/parse` URL or a comma-separated list
+of `/parse` URLs. When omitted, yuyu-tei import stays unavailable until
+you configure a public proxy.
 
 ## Vite template notes
 

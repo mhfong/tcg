@@ -362,6 +362,16 @@ export default function DatabaseValidationPage() {
   // selection on subsequent re-fetches.
   const [filterChosen, setFilterChosen] = useState(false)
 
+  // Themed confirmation dialog for the "Discover now" button. We replaced
+  // the native window.confirm with this in-page modal so the prompt
+  // matches the site's low-poly card aesthetic. The dialog is the same
+  // shape as the validation-page banner (lp-card with ::before gradient
+  // strip), uses the same `--accent` palette, and locks keyboard focus
+  // inside the modal while it is open.
+  const [discoverConfirmOpen, setDiscoverConfirmOpen] = useState(false)
+  const discoverConfirmRef = useRef<HTMLDivElement>(null)
+  const cancelDiscoverRef = useRef<HTMLButtonElement>(null)
+
   const load = useCallback(async () => {
     if (!user) return
     setLoading(true)
@@ -475,15 +485,21 @@ export default function DatabaseValidationPage() {
     }
   }, [user])
 
-  const startDiscover = useCallback(async () => {
+  // Click on "Discover now" just opens the themed confirmation dialog.
+  // The actual API dispatch lives in `confirmStartDiscover` so the dialog
+  // buttons can call it directly. We no longer use `window.confirm`
+  // because the native browser prompt does not match the site's
+  // low-poly card aesthetic.
+  const startDiscover = useCallback(() => {
     if (discoverStarting) return
     if (pendingDiscoveryIds.length === 0) return
-    const count = pendingDiscoveryIds.length
-    const confirmed = window.confirm(
-      `Start SNKRDUNK discovery for ${count} card${count === 1 ? '' : 's'}?\n\n` +
-        'This will queue the GitHub Actions worker to search SNKRDUNK for the missing apparel_id values.',
-    )
-    if (!confirmed) return
+    setDiscoverConfirmOpen(true)
+  }, [discoverStarting, pendingDiscoveryIds.length])
+
+  const confirmStartDiscover = useCallback(async () => {
+    if (discoverStarting) return
+    if (pendingDiscoveryIds.length === 0) return
+    setDiscoverConfirmOpen(false)
     setError(null)
     setDiscoverStarting(true)
     try {
@@ -497,6 +513,43 @@ export default function DatabaseValidationPage() {
       setDiscoverStarting(false)
     }
   }, [discoverStarting, pendingDiscoveryIds, load])
+
+  const cancelStartDiscover = useCallback(() => {
+    if (discoverStarting) return
+    setDiscoverConfirmOpen(false)
+  }, [discoverStarting])
+
+  // While the themed confirmation dialog is open, lock body scroll and
+  // focus the Cancel button as the safe default. We do not aggressively
+  // trap Tab focus because the dialog only has two buttons; the user can
+  // press Escape to cancel via the keydown effect below.
+  useEffect(() => {
+    if (!discoverConfirmOpen) return
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const raf = requestAnimationFrame(() =>
+      cancelDiscoverRef.current?.focus(),
+    )
+    return () => {
+      cancelAnimationFrame(raf)
+      document.body.style.overflow = previousOverflow
+    }
+  }, [discoverConfirmOpen])
+
+  // Escape closes the dialog. Enter inside the dialog buttons is handled
+  // by the buttons themselves (default form-submit semantics), so we
+  // don't need a global Enter handler here.
+  useEffect(() => {
+    if (!discoverConfirmOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setDiscoverConfirmOpen(false)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [discoverConfirmOpen])
 
   useEffect(() => {
     void load()
@@ -1604,6 +1657,135 @@ const gridTemplateColumns =
             >
               ✓ Confirm
             </button>
+          </div>
+        </div>
+      )}
+      {discoverConfirmOpen && (
+        <div
+          role="presentation"
+          onClick={e => {
+            if (e.target === e.currentTarget) {
+              cancelStartDiscover()
+            }
+          }}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 60,
+            background: 'rgba(74,63,56,0.42)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '1.25rem',
+            animation: 'lp-fade-in 160ms ease-out',
+          }}
+        >
+          <div
+            ref={discoverConfirmRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="discover-confirm-title"
+            aria-describedby="discover-confirm-body"
+            tabIndex={-1}
+            onClick={e => e.stopPropagation()}
+            className="lp-card"
+            style={{
+              width: 'min(440px, 100%)',
+              padding: '1.5rem 1.5rem 1.25rem',
+              borderRadius: 18,
+              background: 'rgba(255,248,242,0.96)',
+              boxShadow:
+                '0 18px 48px rgba(74,63,56,0.22), 0 6px 16px rgba(74,63,56,0.10)',
+              outline: 'none',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.75rem',
+                marginBottom: '0.85rem',
+              }}
+            >
+              <span
+                aria-hidden="true"
+                style={{
+                  display: 'inline-flex',
+                  width: '2.25rem',
+                  height: '2.25rem',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: '50%',
+                  background: 'var(--accent-light)',
+                  color: 'var(--accent)',
+                  fontSize: '1.25rem',
+                  fontWeight: 700,
+                  flexShrink: 0,
+                }}
+              >
+                ⚙
+              </span>
+              <h3
+                id="discover-confirm-title"
+                style={{
+                  margin: 0,
+                  fontSize: '1.05rem',
+                  color: 'var(--text-primary)',
+                  fontWeight: 700,
+                }}
+              >
+                Start SNKRDUNK discovery?
+              </h3>
+            </div>
+            <p
+              id="discover-confirm-body"
+              style={{
+                margin: '0 0 1rem',
+                fontSize: '0.88rem',
+                lineHeight: 1.5,
+                color: 'var(--text-secondary)',
+              }}
+            >
+              Queue{' '}
+              <strong style={{ color: 'var(--text-primary)' }}>
+                {pendingDiscoveryIds.length} card
+                {pendingDiscoveryIds.length === 1 ? '' : 's'}
+              </strong>{' '}
+              for the SNKRDUNK lookup worker. The worker searches SNKRDUNK for
+              the missing <code>apparel_id</code> values; matched cards will
+              appear in the Unverified tab once they finish.
+            </p>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'flex-end',
+                gap: '0.5rem',
+              }}
+            >
+              <button
+                ref={cancelDiscoverRef}
+                type="button"
+                className="btn btn-ghost"
+                onClick={cancelStartDiscover}
+                disabled={discoverStarting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => void confirmStartDiscover()}
+                disabled={discoverStarting}
+                style={{
+                  background: 'var(--accent)',
+                  boxShadow:
+                    '0 4px 14px color-mix(in srgb, var(--accent) 35%, transparent)',
+                }}
+              >
+                {discoverStarting ? 'Starting…' : 'Start discovery'}
+              </button>
+            </div>
           </div>
         </div>
       )}

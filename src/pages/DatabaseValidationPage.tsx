@@ -1080,16 +1080,13 @@ const gridTemplateColumns =
                   {total > 0 || discoverStarting
                     ? (
                       <>
-                        {' '}The GitHub Actions worker is running{' '}
-                        <code>scripts/discover_snkrdunk_apparel_ids.py</code>{' '}
+                        {' '}The SNKRDUNK lookup worker is running{' '}
                         on them. They&rsquo;ll appear in the Unverified tab once matched.
                       </>
                     )
                     : (
                       <>
-                        {' '}Click <strong>Discover now</strong> to confirm and queue{' '}
-                        <code>scripts/discover_snkrdunk_apparel_ids.py</code>{' '}
-                        for these cards.
+                        {' '}Click <strong>Discover now</strong> to confirm and queue the SNKRDUNK lookup for these cards.
                       </>
                     )}
                 </div>
@@ -1254,7 +1251,7 @@ const gridTemplateColumns =
         <div className="lp-card" style={{ padding: '2rem', textAlign: 'center' }}>
           <p style={{ margin: 0 }}>
             {rows.length === 0
-              ? 'No cards have a snkrdunk_apparel_id yet. Run scripts/discover_snkrdunk_apparel_ids.py first.'
+              ? 'No cards have a snkrdunk_apparel_id yet. Run the SNKRDUNK lookup first.'
               : searchTerm.trim()
                 ? 'No cards match this filter.'
                 : filter === 'unverified'

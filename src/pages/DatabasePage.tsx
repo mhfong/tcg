@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import type { CardDefinition } from '../lib/types'
@@ -677,25 +676,103 @@ export default function DatabasePage() {
             Add new cards to the master list by pasting a yuyu-tei.jp product URL.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <Link to="/validation" className="btn btn-ghost">
-            Validate mappings
-          </Link>
+        <div style={{ display: 'flex', gap: '0.6rem' }}>
           <button
-            className="btn btn-ghost"
+            type="button"
+            className="btn"
             onClick={openImport}
             title="Bulk-import cards from a yuyu-tei set by series and rarity"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.45rem',
+              padding: '0.55rem 0.95rem',
+              fontSize: '0.85rem',
+              fontWeight: 600,
+              borderRadius: 10,
+              background: 'var(--accent)',
+              color: '#fff',
+              border: '1px solid var(--accent)',
+              boxShadow:
+                '0 2px 8px color-mix(in srgb, var(--accent) 30%, transparent)',
+              cursor: 'pointer',
+              transition: 'transform 120ms ease, box-shadow 120ms ease',
+            }}
+            onMouseEnter={e => {
+              ;(e.currentTarget as HTMLButtonElement).style.transform =
+                'translateY(-1px)'
+              ;(e.currentTarget as HTMLButtonElement).style.boxShadow =
+                '0 6px 16px color-mix(in srgb, var(--accent) 40%, transparent)'
+            }}
+            onMouseLeave={e => {
+              ;(e.currentTarget as HTMLButtonElement).style.transform =
+                'translateY(0)'
+              ;(e.currentTarget as HTMLButtonElement).style.boxShadow =
+                '0 2px 8px color-mix(in srgb, var(--accent) 30%, transparent)'
+            }}
           >
-            ⤓ Import from yuyu-tei
+            <span
+              aria-hidden="true"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '1.4rem',
+                height: '1.4rem',
+                borderRadius: '50%',
+                background: 'rgba(255,255,255,0.18)',
+                fontSize: '0.9rem',
+                lineHeight: 1,
+              }}
+            >
+              ⤓
+            </span>
+            Import from yuyu-tei
           </button>
           <button
+            type="button"
             className="btn btn-primary"
             onClick={() => {
               setShowForm(s => !s)
               startOver()
             }}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.45rem',
+              padding: '0.55rem 0.95rem',
+              fontSize: '0.85rem',
+              fontWeight: 600,
+              borderRadius: 10,
+              transition: 'transform 120ms ease, box-shadow 120ms ease',
+            }}
+            onMouseEnter={e => {
+              ;(e.currentTarget as HTMLButtonElement).style.transform =
+                'translateY(-1px)'
+            }}
+            onMouseLeave={e => {
+              ;(e.currentTarget as HTMLButtonElement).style.transform =
+                'translateY(0)'
+            }}
           >
-            {showForm ? 'Cancel' : '+ Add Card'}
+            <span
+              aria-hidden="true"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '1.4rem',
+                height: '1.4rem',
+                borderRadius: '50%',
+                background: 'rgba(255,255,255,0.22)',
+                fontSize: '0.9rem',
+                lineHeight: 1,
+                fontWeight: 700,
+              }}
+            >
+              {showForm ? '×' : '+'}
+            </span>
+            {showForm ? 'Close add card' : 'Add card manually'}
           </button>
         </div>
       </div>

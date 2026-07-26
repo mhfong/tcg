@@ -196,7 +196,7 @@ def insert_observation(row: dict) -> bool:
 #     <div class="...price...">HK$ ...</div>
 #   </a>
 # We also want the listing ULID so the dedup key is stable across days.
-LISTING_PATH_RE = re.compile(r"/apparels/\d+/used/([A-Z0-9]{20,30})")
+LISTING_PATH_RE = re.compile(r"/apparels/\d+/used/([A-Z0-9]{6,30})")
 PRICE_HKD_RE = re.compile(r"HK\$\s*([\d,]+)")
 CONDITION_LABEL_RE = re.compile(
     r"(PSA\s*10|PSA10|RAW\s*A|A\s*\(|Condition\s*[:#]?\s*A\b)",

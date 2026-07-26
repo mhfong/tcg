@@ -9,19 +9,22 @@ the SNKRDUNK used listings page for two conditions:
 
 …and write one row per *active* listing into `price_history` with:
 
-  source        = 'en'
   condition     = 'RAW_A'  | 'PSA10'
-  status        = 'listed'
-  price         = NULL
-  price_hkd     = <integer from the page>
+  status        = 'listed'  | 'sold'
+  price_jpy     = <integer from the page>
+  price_hkd     = round(price_jpy * fx_rate_jpy_hkd)
+  fx_rate_jpy_hkd = <rate from frankfurter.app at scrape time>
+  fx_rate_date  = <date the rate applies to>
   apparel_id    = <snkrdunk apparel id>
-  listing_id    = <snkrdunk listing ULID>
+  listing_id    = <snkrdunk listing id>
   observed_date = today (UTC)
   card_id       = master_table.id
+  time_text     = first N時間前 / N日前 / YYYY/MM/DD marker on the
+                  listing detail page (NULL if not exposed)
 
 Dedup
 -----
-We de-duplicate by (card_id, source, condition, observed_date, listing_id)
+We de-duplicate by (card_id, condition, observed_date, listing_id)
 because SNKRDUNK listings persist for days at a time. The first time a
 listing shows up we record a snapshot; subsequent scrapes on the same day
 skip the row instead of producing duplicate price_history rows.
@@ -33,6 +36,14 @@ plain request with a vanilla User-Agent returns 403 from the CDN. The
 existing `scripts/discover_snkrdunk_apparel_ids.py` already uses
 Playwright + Chromium for the same reason, so we follow the same
 pattern here.
+
+FX rate
+-------
+At scrape time we fetch today's JPY→HKD rate from frankfurter.dev
+(`https://api.frankfurter.dev/v1/latest?from=JPY&to=HKD`, the active
+endpoint behind frankfurter.app), stamp the rate and its date on
+each row, and derive price_hkd from price_jpy. The historical rate at
+observation time is what makes longitudinal comparisons consistent.
 
 Usage
 -----
@@ -85,7 +96,42 @@ if not SUPABASE_URL or not SUPABASE_KEY:
     # Don't sys.exit on import — only on run. Argparse will validate again.
     pass
 
+# ─── FX rate (JPY → HKD) ───────────────────────────────────────────────
+FX_API_URL = "https://api.frankfurter.dev/v1/latest?from=JPY&to=HKD"
+# In-memory cache so every card in a single run only hits the API once.
+_FX_CACHE: dict[str, tuple[float, datetime.date]] = {}
+
+
+def fetch_fx_rate_jpy_hkd() -> tuple[float, datetime.date]:
+    """Return (rate, date) for the JPY→HKD conversion.
+
+    Uses frankfurter.app — no API key, ECB reference rate, ~50ms
+    response. We cache the result for the lifetime of the process.
+    Raises RuntimeError if the rate can't be fetched.
+    """
+    today = datetime.datetime.now(datetime.timezone.utc).date()
+    if "today" in _FX_CACHE:
+        return _FX_CACHE["today"]
+    try:
+        r = httpx.get(FX_API_URL, timeout=10, follow_redirects=True)
+        r.raise_for_status()
+        body = r.json()
+        rate = float(body["rates"]["HKD"])
+        date = datetime.date.fromisoformat(body["date"])
+    except Exception as e:
+        raise RuntimeError(f"failed to fetch JPY→HKD rate: {e}") from e
+    _FX_CACHE["today"] = (rate, date)
+    return rate, date
+
+
+def jpy_to_hkd(price_jpy: int, rate: float) -> int:
+    """Convert a JPY price to HKD using the supplied rate, rounded."""
+    return round(price_jpy * rate)
+
+
 # ─── SNKRDUNK URLs ───────────────────────────────────────────────────────
+# The JP-locale SNKRDUNK site is the canonical source — pricing is in JPY.
+# English-locale URLs (/en/...) use HKD and would corrupt the JPY column.
 SNKRDUNK_BASE = "https://snkrdunk.com"
 CONDITION_IDS = {
     "RAW_A": 18,
@@ -156,7 +202,6 @@ def _fetch_existing_rows(card_id: str, observed_date: datetime.date) -> list[dic
     params = {
         "select": "id,condition,listing_id,status",
         "card_id": f"eq.{card_id}",
-        "source": "eq.en",
         "observed_date": f"eq.{observed_date.isoformat()}",
         "limit": 1000,
     }
@@ -178,13 +223,12 @@ def _row_key(row: dict) -> tuple[str, str]:
 def fetch_listings_snapshot(
     card_id: str, observed_date: datetime.date
 ) -> dict[tuple[str, str], dict]:
-    """Return {(condition, listing_id): {price_hkd, ...}} for every
+    """Return {(condition, listing_id): {price_jpy, ...}} for every
     listing snapshot recorded for this card on the given observed_date.
     """
     params = {
-        "select": "condition,listing_id,price_hkd,status",
+        "select": "condition,listing_id,price_jpy,status",
         "card_id": f"eq.{card_id}",
-        "source": "eq.en",
         "observed_date": f"eq.{observed_date.isoformat()}",
         "limit": 1000,
     }
@@ -213,9 +257,8 @@ def fetch_latest_listed(
     a listing disappears from the live page.
     """
     params = {
-        "select": "id,price_hkd,observed_date",
+        "select": "id,price_jpy,observed_date",
         "card_id": f"eq.{card_id}",
-        "source": "eq.en",
         "listing_id": f"eq.{listing_id}",
         "condition": f"eq.{condition}",
         "status": "eq.listed",
@@ -283,12 +326,19 @@ def insert_observation(row: dict) -> bool:
 # we extract each listing's ULID, condition, and price.
 
 # The product cards inside /apparels/<id>/used?conditionIds=… look like:
-#   <a class="..." href="/apparels/<apparel_id>/used/<listing_ulid>">
-#     <div class="...price...">HK$ ...</div>
+#   <a class="..." href="/apparels/<apparel_id>/used/<listing_id>">
+#     <div class="...price...">¥NNN,NNN ...</div>
 #   </a>
-# We also want the listing ULID so the dedup key is stable across days.
+# JP-locale prices render as a bare number with `¥` glyph nearby; the
+# listing id is captured separately so the dedup key is stable across days.
 LISTING_PATH_RE = re.compile(r"/apparels/\d+/used/([A-Z0-9]{6,30})")
-PRICE_HKD_RE = re.compile(r"([\d,]+)\s*\n\s*/\s*\n\s*(?:A|PSA\s*10)", re.IGNORECASE)
+# Matches the price + condition pair. We accept either ¥NNN,NNN or
+# NNN,NNN¥, and tolerate whitespace between the digits and the
+# condition marker (A / PSA10).
+PRICE_JPY_RE = re.compile(
+    r"(?:¥\s*)?([\d,]+)\s*¥?\s*(?:\n\s*/\s*\n\s*|\s*[/\s]\s*)(?:A|PSA\s*10)",
+    re.IGNORECASE,
+)
 CONDITION_LABEL_RE = re.compile(
     r"(PSA\s*10|PSA10|RAW\s*A|A\s*\(|Condition\s*[:#]?\s*A\b)",
     re.IGNORECASE,
@@ -333,34 +383,44 @@ async def scroll_until_stable(page: Page, selector: str, max_scrolls: int = 8) -
     await page.evaluate("() => window.scrollTo(0, 0)")
 
 
-async def is_listing_sold(page: Page, apparel_id: str, listing_id: str) -> bool:
-    """Return True if the listing's detail page marks it as sold.
+# Time markers we recognise on the listing detail page. Examples
+# seen in production: "10時間前", "1日前", "2026/07/24".
+LISTING_TIME_RE = re.compile(
+    r"(\d{1,3}時間前|\d{1,3}日前|\d{4}/\d{2}/\d{2})"
+)
 
-    SNKRDUNK shows the literal "取引完了" (transaction completed) marker
-    on the listing's detail page once the transaction has finished.
-    We use this as the authoritative sold signal — it's more accurate
-    than inferring sold by listing disappearance, because a listing
-    can also vanish when a seller delists it without a sale.
+
+async def fetch_listing_detail(
+    page: Page, apparel_id: str, listing_id: str
+) -> dict:
+    """Fetch the listing's detail page and return a dict with two
+    keys: `sold` (boolean) and `time_text` (str | None).
+
+    The detail page exposes:
+      - "取引完了" (transaction completed) → sold=True
+      - The first N時間前 / N日前 / YYYY/MM/DD marker → time_text
     """
     url = f"{SNKRDUNK_BASE}/apparels/{apparel_id}/used/{listing_id}"
     try:
         await page.goto(url, wait_until="domcontentloaded", timeout=20_000)
     except PWTimeout:
-        return False
+        return {"sold": False, "time_text": None}
     try:
         await page.wait_for_load_state("networkidle", timeout=4000)
     except PWTimeout:
         pass
     body = await page.locator("body").inner_text()
-    return "取引完了" in body
+    sold = "取引完了" in body
+    m = LISTING_TIME_RE.search(body)
+    return {"sold": sold, "time_text": m.group(1) if m else None}
 
 
 async def fetch_used_listings(
     page: Page, apparel_id: str, condition_db: str
 ) -> list[dict]:
-    """Return [{listing_id, price_hkd, condition, sold}] for one used
-    listing page. The `sold` flag is always False here; the main loop
-    fills it in by visiting each listing's detail page.
+    """Return [{listing_id, price_jpy, condition, sold, time_text}]
+    for one used listing page. `sold` and `time_text` are placeholders
+    that the main loop fills in by visiting each listing's detail page.
     """
     condition_id = CONDITION_IDS[condition_db]
     url = (
@@ -401,15 +461,16 @@ async def fetch_used_listings(
             continue
         # The price text lives on the anchor or a child element.
         text = await anchors.nth(i).inner_text()
-        price_match = PRICE_HKD_RE.search(text)
+        price_match = PRICE_JPY_RE.search(text)
         if not price_match:
             continue
-        price_hkd = int(price_match.group(1).replace(",", ""))
+        price_jpy = int(price_match.group(1).replace(",", ""))
         seen[listing_id] = {
             "listing_id": listing_id,
-            "price_hkd": price_hkd,
+            "price_jpy": price_jpy,
             "condition": condition_db,
             "sold": False,  # filled in by the main loop via the detail page
+            "time_text": None,  # same
         }
     return list(seen.values())
 
@@ -452,6 +513,14 @@ async def run(
 
     print(f"[plan] conditions: {conditions}")
     print(f"[plan] observed_date: {today.isoformat()}")
+
+    # Fetch today's JPY→HKD rate once per run; every row stamps it.
+    try:
+        fx_rate, fx_date = fetch_fx_rate_jpy_hkd()
+    except RuntimeError as e:
+        print(f"[fatal] {e}", file=sys.stderr)
+        sys.exit(2)
+    print(f"[plan] fx_rate JPY→HKD = {fx_rate} (date={fx_date})")
 
     # 2. Open the browser once; reuse across all cards.
     browser, page = await open_browser(headless=headless)
@@ -507,7 +576,7 @@ async def run(
                     if dry_run:
                         print(
                             f"    [dry-run] mark sold (vanished): listing_id={key[1]} "
-                            f"HK${snap_row.get('price_hkd')}"
+                            f"¥{snap_row.get('price_jpy')}"
                         )
                         sold_count += 1
                         continue
@@ -525,10 +594,12 @@ async def run(
                 sold_at_check = 0
                 for listing in listings:
                     key = (listing["condition"], listing["listing_id"])
-                    sold = await is_listing_sold(
+                    detail = await fetch_listing_detail(
                         page, apparel_id, listing["listing_id"]
                     )
+                    sold = detail["sold"]
                     listing["sold"] = sold
+                    listing["time_text"] = detail["time_text"]
                     if key in existing:
                         # Already recorded for today. If the previous
                         # record was 'listed' but the listing is now
@@ -545,14 +616,16 @@ async def run(
                         continue
                     row_to_insert = {
                         "card_id": card_id,
-                        "source": "en",
                         "condition": CONDITION_TO_DB[condition],
                         "observed_date": today.isoformat(),
-                        "price": None,
-                        "price_hkd": listing["price_hkd"],
+                        "price_jpy": listing["price_jpy"],
+                        "price_hkd": jpy_to_hkd(listing["price_jpy"], fx_rate),
+                        "fx_rate_jpy_hkd": fx_rate,
+                        "fx_rate_date": fx_date.isoformat(),
                         "status": "sold" if sold else "listed",
                         "listing_id": listing["listing_id"],
                         "apparel_id": apparel_id,
+                        "time_text": detail["time_text"],
                     }
                     if dry_run:
                         print(f"    [dry-run] {row_to_insert}")

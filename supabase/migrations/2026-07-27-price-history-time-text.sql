@@ -1,0 +1,21 @@
+-- Adds a nullable text column to price_history to capture the
+-- time marker SNKRDUNK shows on a listing's detail page.
+--
+-- The detail page ("/apparels/<id>/used/<listing_id>") exposes
+--   - "取引完了" (sold marker)         — for sold listings
+--   - N時間前 / N日前               — relative time markers
+--   - YYYY/MM/DD                    — absolute date markers
+--
+-- The exact meaning of each marker depends on context:
+--   * For a sold listing, the first marker after the seller header
+--     is typically the sale-completion time.
+--   * For an on-sale listing, the first marker is the most recent
+--     activity (often a comment posted time).
+--
+-- Because there is no single canonical "posted time" or "sold time"
+-- field on SNKRDUNK's detail page, we store the raw text. The
+-- frontend can localise / parse it as needed.
+--
+-- Safe to run on a populated table.
+ALTER TABLE price_history
+  ADD COLUMN IF NOT EXISTS time_text TEXT NULL;

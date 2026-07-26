@@ -145,8 +145,16 @@ def fetch_existing_observations(
     """Return the set of (condition, listing_id) pairs already recorded
     for this card on the given observed_date. Used for dedup.
     """
+    return {_row_key(r) for r in _fetch_existing_rows(card_id, observed_date)}
+
+
+def _fetch_existing_rows(card_id: str, observed_date: datetime.date) -> list[dict]:
+    """Return the raw rows recorded for this card on the given
+    observed_date. Used by the main loop to look up row ids and
+    statuses when patching from listed → sold.
+    """
     params = {
-        "select": "condition,listing_id",
+        "select": "id,condition,listing_id,status",
         "card_id": f"eq.{card_id}",
         "source": "eq.en",
         "observed_date": f"eq.{observed_date.isoformat()}",
@@ -159,8 +167,11 @@ def fetch_existing_observations(
         timeout=30,
     )
     r.raise_for_status()
-    rows = r.json() or []
-    return {(row["condition"], row["listing_id"] or "") for row in rows}
+    return r.json() or []
+
+
+def _row_key(row: dict) -> tuple[str, str]:
+    return (row["condition"], row["listing_id"] or "")
 
 
 
@@ -322,11 +333,34 @@ async def scroll_until_stable(page: Page, selector: str, max_scrolls: int = 8) -
     await page.evaluate("() => window.scrollTo(0, 0)")
 
 
+async def is_listing_sold(page: Page, apparel_id: str, listing_id: str) -> bool:
+    """Return True if the listing's detail page marks it as sold.
+
+    SNKRDUNK shows the literal "取引完了" (transaction completed) marker
+    on the listing's detail page once the transaction has finished.
+    We use this as the authoritative sold signal — it's more accurate
+    than inferring sold by listing disappearance, because a listing
+    can also vanish when a seller delists it without a sale.
+    """
+    url = f"{SNKRDUNK_BASE}/apparels/{apparel_id}/used/{listing_id}"
+    try:
+        await page.goto(url, wait_until="domcontentloaded", timeout=20_000)
+    except PWTimeout:
+        return False
+    try:
+        await page.wait_for_load_state("networkidle", timeout=4000)
+    except PWTimeout:
+        pass
+    body = await page.locator("body").inner_text()
+    return "取引完了" in body
+
+
 async def fetch_used_listings(
     page: Page, apparel_id: str, condition_db: str
 ) -> list[dict]:
-    """Return [{listing_id, price_hkd, condition}] for one used listing
-    page. Sorted by listing_id for stable ordering.
+    """Return [{listing_id, price_hkd, condition, sold}] for one used
+    listing page. The `sold` flag is always False here; the main loop
+    fills it in by visiting each listing's detail page.
     """
     condition_id = CONDITION_IDS[condition_db]
     url = (
@@ -375,6 +409,7 @@ async def fetch_used_listings(
             "listing_id": listing_id,
             "price_hkd": price_hkd,
             "condition": condition_db,
+            "sold": False,  # filled in by the main loop via the detail page
         }
     return list(seen.values())
 
@@ -431,7 +466,11 @@ async def run(
 
             # 2a. Pre-fetch today's existing observations so we can
             #     skip duplicate listings without re-querying per condition.
-            existing = fetch_existing_observations(card_id, today)
+            existing_rows = _fetch_existing_rows(card_id, today)
+            # Map: (condition, listing_id) -> (row_id, status)
+            existing: dict[tuple[str, str], tuple[str, str]] = {
+                _row_key(r): (r["id"], r["status"]) for r in existing_rows
+            }
             already = len(existing)
             if already:
                 print(f"  existing observations today: {already}")
@@ -467,7 +506,7 @@ async def run(
                         continue
                     if dry_run:
                         print(
-                            f"    [dry-run] mark sold: listing_id={key[1]} "
+                            f"    [dry-run] mark sold (vanished): listing_id={key[1]} "
                             f"HK${snap_row.get('price_hkd')}"
                         )
                         sold_count += 1
@@ -477,12 +516,32 @@ async def run(
                 if sold_count:
                     print(f"  {condition}: {sold_count} sold (vanished)")
 
-                # 2b-ii. Insert today's new listings as status='listed'.
+                # 2b-ii. Insert today's new listings. Each listing is
+                # checked against its detail page (取引完了 marker) to
+                # determine sold vs on-sale status. We also patch any
+                # existing today's row that was previously recorded as
+                # 'listed' but is now actually sold.
                 new_rows = 0
+                sold_at_check = 0
                 for listing in listings:
                     key = (listing["condition"], listing["listing_id"])
+                    sold = await is_listing_sold(
+                        page, apparel_id, listing["listing_id"]
+                    )
+                    listing["sold"] = sold
                     if key in existing:
-                        # Already recorded for today — skip.
+                        # Already recorded for today. If the previous
+                        # record was 'listed' but the listing is now
+                        # sold, flip it without inserting a duplicate.
+                        _, prev_status = existing[key]
+                        if prev_status == "listed" and sold:
+                            if dry_run:
+                                print(
+                                    f"    [dry-run] mark sold: listing_id={listing['listing_id']}"
+                                )
+                            elif mark_listing_sold(existing[key][0], dry_run):
+                                existing[key] = (existing[key][0], "sold")
+                                sold_at_check += 1
                         continue
                     row_to_insert = {
                         "card_id": card_id,
@@ -491,7 +550,7 @@ async def run(
                         "observed_date": today.isoformat(),
                         "price": None,
                         "price_hkd": listing["price_hkd"],
-                        "status": "listed",
+                        "status": "sold" if sold else "listed",
                         "listing_id": listing["listing_id"],
                         "apparel_id": apparel_id,
                     }
@@ -500,8 +559,10 @@ async def run(
                         new_rows += 1
                         continue
                     if insert_observation(row_to_insert):
-                        existing.add(key)
+                        existing[key] = ("?", "sold" if sold else "listed")
                         new_rows += 1
+                if sold_at_check:
+                    print(f"  {condition}: {sold_at_check} previously-listed now sold")
                 print(f"  {condition}: {new_rows} new row(s)")
                 # Polite throttle between conditions.
                 await page.wait_for_timeout(400)

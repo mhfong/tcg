@@ -163,6 +163,86 @@ def fetch_existing_observations(
     return {(row["condition"], row["listing_id"] or "") for row in rows}
 
 
+
+def fetch_listings_snapshot(
+    card_id: str, observed_date: datetime.date
+) -> dict[tuple[str, str], dict]:
+    """Return {(condition, listing_id): {price_hkd, ...}} for every
+    listing snapshot recorded for this card on the given observed_date.
+    """
+    params = {
+        "select": "condition,listing_id,price_hkd,status",
+        "card_id": f"eq.{card_id}",
+        "source": "eq.en",
+        "observed_date": f"eq.{observed_date.isoformat()}",
+        "limit": 1000,
+    }
+    r = httpx.get(
+        f"{SUPABASE_URL}/rest/v1/price_history",
+        params=params,
+        headers=H_JSON,
+        timeout=30,
+    )
+    r.raise_for_status()
+    rows = r.json() or []
+    return {
+        (row["condition"], row["listing_id"] or ""): row
+        for row in rows
+        if row.get("listing_id")
+    }
+
+
+def fetch_latest_listed(
+    card_id: str, listing_id: str, condition: str
+) -> Optional[dict]:
+    """Return the most recent 'listed' snapshot for a (card_id,
+    listing_id, condition) triple, or None if none exists.
+
+    We use this to find the row we should transition to 'sold' when
+    a listing disappears from the live page.
+    """
+    params = {
+        "select": "id,price_hkd,observed_date",
+        "card_id": f"eq.{card_id}",
+        "source": "eq.en",
+        "listing_id": f"eq.{listing_id}",
+        "condition": f"eq.{condition}",
+        "status": "eq.listed",
+        "order": "observed_date.desc",
+        "limit": 1,
+    }
+    r = httpx.get(
+        f"{SUPABASE_URL}/rest/v1/price_history",
+        params=params,
+        headers=H_JSON,
+        timeout=30,
+    )
+    r.raise_for_status()
+    rows = r.json() or []
+    return rows[0] if rows else None
+
+
+def mark_listing_sold(row_id: str, dry_run: bool) -> bool:
+    """Patch a price_history row from status='listed' to status='sold'.
+    Used when a listing was visible yesterday but is gone today.
+    """
+    if dry_run:
+        return True
+    r = httpx.patch(
+        f"{SUPABASE_URL}/rest/v1/price_history",
+        params={"id": f"eq.{row_id}"},
+        json={"status": "sold"},
+        headers=H_JSON,
+        timeout=30,
+    )
+    if r.status_code >= 400:
+        print(
+            f"  [!] mark-sold failed for row {row_id}: "
+            f"HTTP {r.status_code} {r.text[:200]}",
+            file=sys.stderr,
+        )
+        return False
+    return True
 def insert_observation(row: dict) -> bool:
     """Insert one price_history row. Returns True on success.
 
@@ -356,10 +436,48 @@ async def run(
             if already:
                 print(f"  existing observations today: {already}")
 
+            # 2b. Pre-fetch yesterday's listings so we can detect
+            #     which ones have been sold (vanished from the page).
+            yesterday = today - datetime.timedelta(days=1)
+            yesterday_listings = fetch_listings_snapshot(card_id, yesterday)
+            if yesterday_listings:
+                print(f"  yesterday listed set: {len(yesterday_listings)}")
+
             for condition in conditions:
                 listings = await fetch_used_listings(page, apparel_id, condition)
-                print(f"  {condition}: {len(listings)} listing(s)")
+                live_ids = {l["listing_id"] for l in listings}
+                print(f"  {condition}: {len(listings)} listing(s) live")
 
+                # 2b-i. Detect sold listings: any listing that was
+                # present yesterday but not today is considered sold.
+                # We update the most recent 'listed' row for that
+                # listing_id to status='sold' so we keep just one
+                # canonical sold record per (listing_id, condition).
+                sold_count = 0
+                for key, snap_row in yesterday_listings.items():
+                    if key[0] != condition:
+                        continue
+                    if key[1] in live_ids:
+                        continue  # still listed today
+                    # Vanished → mark the most recent 'listed' row sold
+                    latest = fetch_latest_listed(card_id, key[1], condition)
+                    if latest is None:
+                        # No 'listed' row to transition (e.g. the row
+                        # was already marked sold in a previous run).
+                        continue
+                    if dry_run:
+                        print(
+                            f"    [dry-run] mark sold: listing_id={key[1]} "
+                            f"HK${snap_row.get('price_hkd')}"
+                        )
+                        sold_count += 1
+                        continue
+                    if mark_listing_sold(latest["id"], dry_run):
+                        sold_count += 1
+                if sold_count:
+                    print(f"  {condition}: {sold_count} sold (vanished)")
+
+                # 2b-ii. Insert today's new listings as status='listed'.
                 new_rows = 0
                 for listing in listings:
                     key = (listing["condition"], listing["listing_id"])

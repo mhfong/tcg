@@ -772,7 +772,7 @@ export default function DatabasePage() {
             >
               {showForm ? '×' : '+'}
             </span>
-            {showForm ? 'Close add card' : 'Add card manually'}
+            {showForm ? 'Close add card' : 'Add single card'}
           </button>
         </div>
       </div>

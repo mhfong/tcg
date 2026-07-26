@@ -1,0 +1,91 @@
+name: SNKRDUNK daily price scrape
+
+# Runs scripts/snkrdunk_price_daily.py once per day so the price_history
+# table always has a fresh EN listing snapshot for every mapped card.
+#
+# Why daily and not on every page load?
+#   - SNKRDUNK's listing pages are guarded by anti-bot checks; cached
+#     snapshots are good enough for the watchlist/inventory dashboard.
+#   - 1× daily keeps the free-tier runner minute budget low.
+#
+# Why Playwright (not a plain HTTP fetch)?
+#   - snkrdunk.com returns 403 from cloud IPs to plain requests. The
+#     existing discover script discovered this same limitation, so we
+#     share the workaround.
+#
+# The cron runs at 00:15 UTC ~ 08:15 JST so the new day's listings
+# have a few hours to settle before we capture them.
+on:
+  schedule:
+    - cron: '15 0 * * *'
+  workflow_dispatch:
+    # Manual trigger for backfilling or testing.
+    inputs:
+      only_this:
+        description: 'Optional master_table.id to restrict the run to one card'
+        required: false
+        default: ''
+      only_condition:
+        description: 'Optional condition filter (RAW_A or PSA10)'
+        required: false
+        default: ''
+      dry_run:
+        description: 'Print would-be rows instead of inserting'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: snkrdunk-price-daily
+  cancel-in-progress: false  # don't kill an in-flight run mid-card
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55  # 1× per mapped card ~ a few seconds; cap for safety
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      HEADLESS: '1'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: scripts/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          sudo apt-get update -qq
+          sudo apt-get install -yqq --no-install-recommends \
+            libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
+            libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
+            libgbm1 libpango-1.0-0 libcairo2 libasound2t64
+          pip install -r scripts/requirements.txt
+          python -m playwright install chromium --with-deps
+
+      - name: Daily price scrape
+        env:
+          ONLY_THIS: ${{ github.event.inputs.only_this }}
+          ONLY_CONDITION: ${{ github.event.inputs.only_condition }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          ARGS=()
+          if [ -n "$ONLY_THIS" ]; then
+            ARGS+=(--only-this "$ONLY_THIS")
+          fi
+          if [ -n "$ONLY_CONDITION" ]; then
+            ARGS+=(--only-condition "$ONLY_CONDITION")
+          fi
+          if [ "$DRY_RUN" = "true" ]; then
+            ARGS+=(--dry-run)
+          fi
+          python scripts/snkrdunk_price_daily.py "${ARGS[@]}"

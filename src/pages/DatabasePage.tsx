@@ -40,7 +40,7 @@ type ParseProxyError = Error & {
 }
 
 type SortDirection = 'asc' | 'desc'
-type SortColumn = 'series' | 'cardIndex'
+type SortColumn = 'series' | 'cardIndex' | 'rarity'
 
 const DATABASE_PAGE_SIZE = 50
 
@@ -52,19 +52,20 @@ const cardSortCollator = new Intl.Collator(undefined, {
 function compareCardsByColumn(
   a: CardDefinition,
   b: CardDefinition,
-  sortColumn: SortColumn,
+  seriesDirection: SortDirection,
+  cardIndexDirection: SortDirection,
+  rarityDirection: SortDirection,
 ): number {
-  const primaryOrder = sortColumn === 'series'
-    ? cardSortCollator.compare(a.card_series, b.card_series)
-    : cardSortCollator.compare(a.card_index, b.card_index)
-  if (primaryOrder !== 0) return primaryOrder
+  const seriesOrder = cardSortCollator.compare(a.card_series, b.card_series)
+  if (seriesOrder !== 0) return seriesDirection === 'asc' ? seriesOrder : -seriesOrder
 
-  const secondaryOrder = sortColumn === 'series'
-    ? cardSortCollator.compare(a.card_index, b.card_index)
-    : cardSortCollator.compare(a.card_series, b.card_series)
-  if (secondaryOrder !== 0) return secondaryOrder
+  const cardIndexOrder = cardSortCollator.compare(a.card_index, b.card_index)
+  if (cardIndexOrder !== 0) {
+    return cardIndexDirection === 'asc' ? cardIndexOrder : -cardIndexOrder
+  }
 
-  return cardSortCollator.compare(a.card_rarity, b.card_rarity)
+  const rarityOrder = cardSortCollator.compare(a.card_rarity, b.card_rarity)
+  return rarityDirection === 'asc' ? rarityOrder : -rarityOrder
 }
 
 function isValidYuyuteiUrl(url: string): boolean {
@@ -239,8 +240,9 @@ export default function DatabasePage() {
   const [success, setSuccess] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [filterTcg, setFilterTcg] = useState<'all' | TcgType>('all')
-  const [sortColumn, setSortColumn] = useState<SortColumn>('series')
-  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
+  const [seriesSortDirection, setSeriesSortDirection] = useState<SortDirection>('asc')
+  const [cardIndexSortDirection, setCardIndexSortDirection] = useState<SortDirection>('asc')
+  const [raritySortDirection, setRaritySortDirection] = useState<SortDirection>('asc')
   const [currentPage, setCurrentPage] = useState(1)
 
   // Import-from-yuyutei state
@@ -695,11 +697,12 @@ export default function DatabasePage() {
   }
 
   function toggleSort(column: SortColumn) {
-    if (sortColumn === column) {
-      setSortDirection(direction => direction === 'asc' ? 'desc' : 'asc')
+    if (column === 'series') {
+      setSeriesSortDirection(direction => direction === 'asc' ? 'desc' : 'asc')
+    } else if (column === 'cardIndex') {
+      setCardIndexSortDirection(direction => direction === 'asc' ? 'desc' : 'asc')
     } else {
-      setSortColumn(column)
-      setSortDirection('asc')
+      setRaritySortDirection(direction => direction === 'asc' ? 'desc' : 'asc')
     }
     setCurrentPage(1)
   }
@@ -724,10 +727,22 @@ export default function DatabasePage() {
       )
     })
     return matchingCards.sort((a, b) => {
-      const order = compareCardsByColumn(a, b, sortColumn)
-      return sortDirection === 'asc' ? order : -order
+      return compareCardsByColumn(
+        a,
+        b,
+        seriesSortDirection,
+        cardIndexSortDirection,
+        raritySortDirection,
+      )
     })
-  }, [cards, searchTerm, filterTcg, sortColumn, sortDirection])
+  }, [
+    cards,
+    searchTerm,
+    filterTcg,
+    seriesSortDirection,
+    cardIndexSortDirection,
+    raritySortDirection,
+  ])
 
   return (
     <>
@@ -1213,35 +1228,48 @@ export default function DatabasePage() {
             <thead>
               <tr>
                 <th>TCG</th>
-                <th aria-sort={sortColumn === 'series' ? sortDirection === 'asc' ? 'ascending' : 'descending' : 'none'}>
+                <th aria-sort={seriesSortDirection === 'asc' ? 'ascending' : 'descending'}>
                   <button
                     type="button"
                     className="table-sort-button"
                     onClick={() => toggleSort('series')}
-                    aria-label={`Sort by series ${sortColumn === 'series' && sortDirection === 'asc' ? 'descending' : 'ascending'}`}
+                    aria-label={`Sort by series ${seriesSortDirection === 'asc' ? 'descending' : 'ascending'}`}
                     title="Sort by series"
                   >
                     Series
                     <span className="table-sort-button__icon" aria-hidden="true">
-                      {sortColumn === 'series' ? sortDirection === 'asc' ? '↑' : '↓' : '↕'}
+                      {seriesSortDirection === 'asc' ? '↑' : '↓'}
                     </span>
                   </button>
                 </th>
-                <th aria-sort={sortColumn === 'cardIndex' ? sortDirection === 'asc' ? 'ascending' : 'descending' : 'none'}>
+                <th aria-sort={cardIndexSortDirection === 'asc' ? 'ascending' : 'descending'}>
                   <button
                     type="button"
                     className="table-sort-button"
                     onClick={() => toggleSort('cardIndex')}
-                    aria-label={`Sort by card number ${sortColumn === 'cardIndex' && sortDirection === 'asc' ? 'descending' : 'ascending'}`}
+                    aria-label={`Sort by card number ${cardIndexSortDirection === 'asc' ? 'descending' : 'ascending'}`}
                     title="Sort by card number"
                   >
                     Card #
                     <span className="table-sort-button__icon" aria-hidden="true">
-                      {sortColumn === 'cardIndex' ? sortDirection === 'asc' ? '↑' : '↓' : '↕'}
+                      {cardIndexSortDirection === 'asc' ? '↑' : '↓'}
                     </span>
                   </button>
                 </th>
-                <th>Rarity</th>
+                <th aria-sort={raritySortDirection === 'asc' ? 'ascending' : 'descending'}>
+                  <button
+                    type="button"
+                    className="table-sort-button"
+                    onClick={() => toggleSort('rarity')}
+                    aria-label={`Sort by rarity ${raritySortDirection === 'asc' ? 'descending' : 'ascending'}`}
+                    title="Sort by rarity"
+                  >
+                    Rarity
+                    <span className="table-sort-button__icon" aria-hidden="true">
+                      {raritySortDirection === 'asc' ? '↑' : '↓'}
+                    </span>
+                  </button>
+                </th>
                 <th>Name</th>
                 <th>Yuyutei</th>
               </tr>

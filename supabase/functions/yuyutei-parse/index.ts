@@ -78,14 +78,18 @@ async function parseYuyuteiCard(url: string): Promise<Record<string, string>> {
 
   // 2. Series from bracket in title
   const seriesMatch = title.match(/\[([A-Za-z0-9]+)\]/)
-  const series = (seriesMatch?.[1] ?? meta.series).toLowerCase()
+  const imageSeries = (seriesMatch?.[1] ?? meta.series).toLowerCase()
+  const series =
+    meta.tcg_type === "OPCG" && meta.series.includes("promo")
+      ? "promo"
+      : imageSeries
 
   // 3. Card number — multiple strategies, most-precise first
   const card_number = extractCardNumber(html, meta.tcg_type)
 
   // 4. Image URL — predictable CDN path
   const image_tcg = IMAGE_TCG[meta.tcg_type] ?? "poc"
-  const image_url = `https://card.yuyu-tei.jp/${image_tcg}/front/${series}/${meta.slug_id}.jpg`
+  const image_url = `https://card.yuyu-tei.jp/${image_tcg}/front/${imageSeries}/${meta.slug_id}.jpg`
 
   return {
     tcg_type: meta.tcg_type,

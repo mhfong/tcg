@@ -1,6 +1,6 @@
 import unittest
 
-from scraper import extract_rarity_and_name
+from scraper import extract_rarity_and_name, resolve_card_series
 
 
 class ScraperTitleTests(unittest.TestCase):
@@ -24,6 +24,18 @@ class ScraperTitleTests(unittest.TestCase):
 
         self.assertEqual(rarity, 'AR')
         self.assertEqual(name, 'ヒスイビリリダマ')
+
+    def test_opcg_promo_url_uses_promo_series(self):
+        self.assertEqual(
+            resolve_card_series('promo-op10', 'op01', 'OPCG'),
+            'promo',
+        )
+
+    def test_non_promo_series_keeps_title_series(self):
+        self.assertEqual(
+            resolve_card_series('op10', 'op10', 'OPCG'),
+            'op10',
+        )
 
 
 if __name__ == '__main__':

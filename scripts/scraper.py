@@ -120,6 +120,13 @@ def extract_rarity_and_name(title: str, tcg_type: str) -> tuple[str, str]:
     return rarity, name_jp
 
 
+def resolve_card_series(url_series: str, title_series: str, tcg_type: str) -> str:
+    """Resolve the database series while preserving the product image series."""
+    if tcg_type == "OPCG" and "promo" in url_series.lower():
+        return "promo"
+    return (title_series or url_series).lower()
+
+
 def parse_yuyutei_card(url: str) -> dict:  # noqa: C901  (extraction, kept together)
     """
     Fetch a yuyu-tei product page and return structured card fields.
@@ -185,14 +192,15 @@ def parse_yuyutei_card(url: str) -> dict:  # noqa: C901  (extraction, kept toget
 
     # Series from bracket in title: [S12a] or [OP01]
     series_match = re.search(r"\[([A-Za-z0-9]+)\]", title)
-    series = series_match.group(1).lower() if series_match else meta["series"]
+    image_series = series_match.group(1).lower() if series_match else meta["series"]
+    series = resolve_card_series(meta["series"], image_series, meta["tcg_type"])
 
     # Card number — multiple strategies, most-precise first
     card_number = extract_card_number(html, meta["tcg_type"])
 
     # Image URL — predictable CDN path
     image_tcg = YUYUTEI_IMAGE_TCG_CODES.get(meta["tcg_type"], "poc")
-    image_url = f"https://card.yuyu-tei.jp/{image_tcg}/front/{series}/{meta['slug_id']}.jpg"
+    image_url = f"https://card.yuyu-tei.jp/{image_tcg}/front/{image_series}/{meta['slug_id']}.jpg"
 
     # Deterministic card ID — matches the frontend scheme in src/lib/cardId.ts
     digits = re.sub(r"\D", "", card_number)

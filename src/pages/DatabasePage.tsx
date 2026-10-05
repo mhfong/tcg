@@ -1975,9 +1975,11 @@ async function parseLocally(url: string): Promise<PreviewCard> {
 
   const tcg_code = (parts[1] || '').toLowerCase()
   const tcg_type: TcgType = tcgMap[tcg_code] ?? 'PTCG'
-  const series = (parts[3] || '').toLowerCase()
+  const urlSeries = (parts[3] || '').toLowerCase()
+  const series =
+    tcg_type === 'OPCG' && urlSeries.includes('promo') ? 'promo' : urlSeries
   const slug_id = parts[4] || ''
-  const image_url = `https://card.yuyu-tei.jp/${imgMap[tcg_type]}/front/${series}/${slug_id}.jpg`
+  const image_url = `https://card.yuyu-tei.jp/${imgMap[tcg_type]}/front/${urlSeries}/${slug_id}.jpg`
 
   return {
     tcg_type,

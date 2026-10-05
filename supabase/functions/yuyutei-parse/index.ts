@@ -60,14 +60,16 @@ async function parseYuyuteiCard(url: string): Promise<Record<string, string>> {
   let head = (title.split("|")[0] ?? "").trim()
   // Strip trailing 販売 / 買取 verb
   head = head.replace(/\s+(販売|買取)\s*$/, "")
-  // Strip ALL trailing parenthetical qualifiers (loop handles
-  //   "name(foo)(bar)" → "name" and "ドン!!カード(x)(パラレル)(スーパーパラレル)" → "ドン!!カード(x)")
-  while (/\s*\([^)]*\)\s*$/.test(head)) {
-    head = head.replace(/\s*\([^)]*\)\s*$/, "")
+  // OPCG names use parenthetical text for parallel/set variants. Keep the
+  // complete string after the rarity; only PTCG keeps the old cleanup.
+  if (meta.tcg_type !== "OPCG") {
+    while (/\s*\([^)]*\)\s*$/.test(head)) {
+      head = head.replace(/\s*\([^)]*\)\s*$/, "")
+    }
   }
-  const headTokens = head.split(/\s+/, 2)
-  let rarity = headTokens[0] ?? ""
-  let name_jp = headTokens[1] ?? ""
+  const firstSpace = head.search(/\s/)
+  let rarity = firstSpace < 0 ? head : head.slice(0, firstSpace)
+  const name_jp = firstSpace < 0 ? "" : head.slice(firstSpace).trim()
   // Special case: yuyu-tei uses "-" as the rarity placeholder for
   // ドン!! cards (which actually have GOLD-DON rarity).
   if (name_jp.startsWith("ドン!!カード") && rarity === "-") {

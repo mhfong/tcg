@@ -101,6 +101,25 @@ def extract_card_number(html: str, tcg_type: str) -> str:
     return ""
 
 
+def extract_rarity_and_name(title: str, tcg_type: str) -> tuple[str, str]:
+    """Extract rarity and card name from a yuyu-tei product title."""
+    # Strip site suffix "| ポケモンカードゲーム" / "| ONE PIECE...".
+    title = re.sub(r"\s*\|\s*(ポケモンカードゲーム|ONE PIECE.*|ワンピース.*)\s*$", "", title)
+    head = title.split("|")[0].strip() if title else ""
+    head = re.sub(r"\s+(販売|買取)\s*$", "", head)
+
+    # OPCG names use parenthetical text for parallel/set variants. That text
+    # is part of the name because the name is everything after the rarity.
+    if tcg_type != "OPCG":
+        while re.search(r"\s*\([^)]*\)\s*$", head):
+            head = re.sub(r"\s*\([^)]*\)\s*$", "", head)
+
+    head_tokens = head.split(maxsplit=1)
+    rarity = head_tokens[0] if head_tokens else ""
+    name_jp = head_tokens[1] if len(head_tokens) > 1 else ""
+    return rarity, name_jp
+
+
 def parse_yuyutei_card(url: str) -> dict:  # noqa: C901  (extraction, kept together)
     """
     Fetch a yuyu-tei product page and return structured card fields.
@@ -158,18 +177,7 @@ def parse_yuyutei_card(url: str) -> dict:  # noqa: C901  (extraction, kept toget
     #   OPCG: "P-SEC モンキー・D・ルフィ(パラレル) | 販売 | [OP15]神の島の冒険 | ONE PIECEカードゲーム"
     title_match = re.search(r"<title>([^<]+)</title>", html)
     title = title_match.group(1).strip() if title_match else ""
-    # Strip site suffix "| ポケモンカードゲーム" / "| ONE PIECE カードゲーム"
-    title = re.sub(r"\s*\|\s*(ポケモンカードゲーム|ONE PIECE.*|ワンピース.*)\s*$", "", title)
-    head = title.split("|")[0].strip() if title else ""
-    # Strip trailing 販売 / 買取 verb
-    head = re.sub(r"\s+(販売|買取)\s*$", "", head)
-    # Strip ALL trailing parenthetical qualifiers (loop so we handle
-    #   "name(foo)(bar)" → "name" and "ドン!!カード(x)(パラレル)(スーパーパラレル)" → "ドン!!カード(x)")
-    while re.search(r"\s*\([^)]*\)\s*$", head):
-        head = re.sub(r"\s*\([^)]*\)\s*$", "", head)
-    head_tokens = head.split(maxsplit=1)
-    rarity = head_tokens[0] if head_tokens else ""
-    name_jp = head_tokens[1] if len(head_tokens) > 1 else ""
+    rarity, name_jp = extract_rarity_and_name(title, meta["tcg_type"])
     # Special case: yuyu-tei uses "-" as the rarity placeholder for
     # ドン!! cards (which have GOLD-DON rarity). Detect and fix.
     if name_jp.startswith("ドン!!カード") and rarity == "-":

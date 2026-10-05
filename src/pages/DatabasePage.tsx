@@ -41,6 +41,8 @@ type ParseProxyError = Error & {
 
 type SortDirection = 'asc' | 'desc'
 
+const DATABASE_PAGE_SIZE = 50
+
 const cardSortCollator = new Intl.Collator(undefined, {
   numeric: true,
   sensitivity: 'base',
@@ -229,6 +231,7 @@ export default function DatabasePage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [filterTcg, setFilterTcg] = useState<'all' | TcgType>('all')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
+  const [currentPage, setCurrentPage] = useState(1)
 
   // Import-from-yuyutei state
   const [importOpen, setImportOpen] = useState(false)
@@ -273,13 +276,30 @@ export default function DatabasePage() {
 
   async function loadCards() {
     setLoading(true)
-    const { data, error: e } = await supabase
-      .from('master_table')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(500)
-    if (e) setError(e.message)
-    if (data) setCards(data as CardDefinition[])
+    const queryPageSize = 1000
+    const loadedCards: CardDefinition[] = []
+    let offset = 0
+    let failed = false
+
+    while (true) {
+      const { data, error: e } = await supabase
+        .from('master_table')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .range(offset, offset + queryPageSize - 1)
+      if (e) {
+        setError(e.message)
+        failed = true
+        break
+      }
+
+      const page = (data ?? []) as CardDefinition[]
+      loadedCards.push(...page)
+      if (page.length < queryPageSize) break
+      offset += queryPageSize
+    }
+
+    if (!failed) setCards(loadedCards)
     setLoading(false)
   }
 
@@ -1119,12 +1139,18 @@ export default function DatabasePage() {
           className="input toolbar__search"
           placeholder="Search by series, number, name, or rarity…"
           value={searchTerm}
-          onChange={e => setSearchTerm(e.target.value)}
+          onChange={e => {
+            setSearchTerm(e.target.value)
+            setCurrentPage(1)
+          }}
         />
         <select
           className="input toolbar__filter"
           value={filterTcg}
-          onChange={e => setFilterTcg(e.target.value as 'all' | TcgType)}
+          onChange={e => {
+            setFilterTcg(e.target.value as 'all' | TcgType)
+            setCurrentPage(1)
+          }}
         >
           <option value="all">All TCG</option>
           <option value="PTCG">PTCG only</option>
@@ -1133,7 +1159,10 @@ export default function DatabasePage() {
         <button
           type="button"
           className="btn btn-ghost"
-          onClick={() => setSortDirection(direction => direction === 'asc' ? 'desc' : 'asc')}
+          onClick={() => {
+            setSortDirection(direction => direction === 'asc' ? 'desc' : 'asc')
+            setCurrentPage(1)
+          }}
           aria-label={`Sort ${sortDirection === 'asc' ? 'descending' : 'ascending'} by series and card number`}
           title={`Sorted ${sortDirection === 'asc' ? 'ascending' : 'descending'} by series and card number. Click to reverse.`}
           style={{
@@ -1170,6 +1199,13 @@ export default function DatabasePage() {
           </div>
         </div>
       ) : (
+        (() => {
+          const pageCount = Math.max(1, Math.ceil(filtered.length / DATABASE_PAGE_SIZE))
+          const page = Math.min(currentPage, pageCount)
+          const pageStart = (page - 1) * DATABASE_PAGE_SIZE
+          const visibleCards = filtered.slice(pageStart, pageStart + DATABASE_PAGE_SIZE)
+
+          return (
         <div className="lp-card table-card">
           <table className="data-table">
             <thead>
@@ -1183,7 +1219,7 @@ export default function DatabasePage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map(c => (
+              {visibleCards.map(c => (
                 <tr key={c.id}>
                   <td>
                     <span className={`tag tag-${c.tcg_type.toLowerCase()}`}>
@@ -1210,10 +1246,50 @@ export default function DatabasePage() {
               ))}
             </tbody>
           </table>
-          <div className="table-foot">
-            Showing {filtered.length} of {cards.length} most recent cards
+          <div
+            className="table-foot"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '0.75rem',
+              flexWrap: 'wrap',
+            }}
+          >
+            <span>
+              Showing {pageStart + 1}-{Math.min(pageStart + DATABASE_PAGE_SIZE, filtered.length)} of {filtered.length} cards
+            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => setCurrentPage(value => Math.max(1, Math.min(value, pageCount) - 1))}
+                disabled={page === 1}
+                aria-label="Previous page"
+                title="Previous page"
+                style={{ padding: '0.35rem 0.6rem' }}
+              >
+                ←
+              </button>
+              <span aria-label={`Page ${page} of ${pageCount}`}>
+                Page {page} of {pageCount}
+              </span>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => setCurrentPage(value => Math.min(pageCount, value + 1))}
+                disabled={page === pageCount}
+                aria-label="Next page"
+                title="Next page"
+                style={{ padding: '0.35rem 0.6rem' }}
+              >
+                →
+              </button>
+            </div>
           </div>
         </div>
+          )
+        })()
       )}
 
       {confirmDeleteOpen && (

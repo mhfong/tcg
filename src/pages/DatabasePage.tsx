@@ -4,6 +4,7 @@ import { useAuth } from '../lib/auth'
 import type { CardDefinition } from '../lib/types'
 import { PTCG_SERIES, OPCG_SERIES, PTCG_RARITIES, OPCG_RARITIES } from '../lib/types'
 import { makeCardId } from '../lib/cardId'
+import { getSingleCardNameOverride } from '../lib/yuyuteiCardNames'
 
 type TcgType = 'PTCG' | 'OPCG'
 
@@ -633,6 +634,8 @@ export default function DatabasePage() {
           throw e
         }
       }
+      const nameOverride = getSingleCardNameOverride(result.url_yuyutei || url)
+      if (nameOverride) result = { ...result, card_name: nameOverride }
       setPreview(result)
       setStage('preview')
     } catch (e) {

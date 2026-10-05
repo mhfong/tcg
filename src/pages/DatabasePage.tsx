@@ -39,6 +39,23 @@ type ParseProxyError = Error & {
   proxyMode?: ParseProxyMode
 }
 
+type SortDirection = 'asc' | 'desc'
+
+const cardSortCollator = new Intl.Collator(undefined, {
+  numeric: true,
+  sensitivity: 'base',
+})
+
+function compareCardsBySeriesAndIndex(a: CardDefinition, b: CardDefinition): number {
+  const seriesOrder = cardSortCollator.compare(a.card_series, b.card_series)
+  if (seriesOrder !== 0) return seriesOrder
+
+  const indexOrder = cardSortCollator.compare(a.card_index, b.card_index)
+  if (indexOrder !== 0) return indexOrder
+
+  return cardSortCollator.compare(a.card_rarity, b.card_rarity)
+}
+
 function isValidYuyuteiUrl(url: string): boolean {
   if (!url) return false
   try {
@@ -211,6 +228,7 @@ export default function DatabasePage() {
   const [success, setSuccess] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [filterTcg, setFilterTcg] = useState<'all' | TcgType>('all')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
 
   // Import-from-yuyutei state
   const [importOpen, setImportOpen] = useState(false)
@@ -655,7 +673,7 @@ export default function DatabasePage() {
 
   const filtered = useMemo(() => {
     const q = searchTerm.trim().toLowerCase()
-    return cards.filter(c => {
+    const matchingCards = cards.filter(c => {
       if (filterTcg !== 'all' && c.tcg_type !== filterTcg) return false
       if (!q) return true
       return (
@@ -665,7 +683,11 @@ export default function DatabasePage() {
         c.card_rarity.toLowerCase().includes(q)
       )
     })
-  }, [cards, searchTerm, filterTcg])
+    return matchingCards.sort((a, b) => {
+      const order = compareCardsBySeriesAndIndex(a, b)
+      return sortDirection === 'asc' ? order : -order
+    })
+  }, [cards, searchTerm, filterTcg, sortDirection])
 
   return (
     <>
@@ -1108,6 +1130,21 @@ export default function DatabasePage() {
           <option value="PTCG">PTCG only</option>
           <option value="OPCG">OPCG only</option>
         </select>
+        <button
+          type="button"
+          className="btn btn-ghost"
+          onClick={() => setSortDirection(direction => direction === 'asc' ? 'desc' : 'asc')}
+          aria-label={`Sort ${sortDirection === 'asc' ? 'descending' : 'ascending'} by series and card number`}
+          title={`Sorted ${sortDirection === 'asc' ? 'ascending' : 'descending'} by series and card number. Click to reverse.`}
+          style={{
+            minWidth: '2.75rem',
+            paddingInline: '0.7rem',
+            fontSize: '1.05rem',
+            lineHeight: 1,
+          }}
+        >
+          {sortDirection === 'asc' ? '↑' : '↓'}
+        </button>
         <button
           type="button"
           className="btn btn-danger"

@@ -253,9 +253,9 @@ export default function DatabasePage() {
   const [success, setSuccess] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [filterTcg, setFilterTcg] = useState<'all' | TcgType>('all')
-  const [seriesSortDirection, setSeriesSortDirection] = useState<SortState>('asc')
-  const [cardIndexSortDirection, setCardIndexSortDirection] = useState<SortState>('asc')
-  const [raritySortDirection, setRaritySortDirection] = useState<SortState>('asc')
+  const [seriesSortDirection, setSeriesSortDirection] = useState<SortState>(null)
+  const [cardIndexSortDirection, setCardIndexSortDirection] = useState<SortState>(null)
+  const [raritySortDirection, setRaritySortDirection] = useState<SortState>(null)
   const [currentPage, setCurrentPage] = useState(1)
 
   // Import-from-yuyutei state

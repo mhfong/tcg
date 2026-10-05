@@ -16,6 +16,13 @@ test('uses the English second anniversary name for the promo OP10 product URL', 
   )
 })
 
+test('uses the full English second anniversary name for promo OP10 product URL 10189', () => {
+  assert.equal(
+    getSingleCardNameOverride('https://yuyu-tei.jp/sell/opc/card/promo-op10/10189'),
+    'モンキー・D・ルフィ(パラレル)(English 2nd Anniversary set日本語版)',
+  )
+})
+
 test('does not override unrelated product URLs', () => {
   assert.equal(
     getSingleCardNameOverride('https://yuyu-tei.jp/sell/opc/card/op11/10155'),

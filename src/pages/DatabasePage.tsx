@@ -40,6 +40,7 @@ type ParseProxyError = Error & {
 }
 
 type SortDirection = 'asc' | 'desc'
+type SortColumn = 'series' | 'cardIndex'
 
 const DATABASE_PAGE_SIZE = 50
 
@@ -48,12 +49,20 @@ const cardSortCollator = new Intl.Collator(undefined, {
   sensitivity: 'base',
 })
 
-function compareCardsBySeriesAndIndex(a: CardDefinition, b: CardDefinition): number {
-  const seriesOrder = cardSortCollator.compare(a.card_series, b.card_series)
-  if (seriesOrder !== 0) return seriesOrder
+function compareCardsByColumn(
+  a: CardDefinition,
+  b: CardDefinition,
+  sortColumn: SortColumn,
+): number {
+  const primaryOrder = sortColumn === 'series'
+    ? cardSortCollator.compare(a.card_series, b.card_series)
+    : cardSortCollator.compare(a.card_index, b.card_index)
+  if (primaryOrder !== 0) return primaryOrder
 
-  const indexOrder = cardSortCollator.compare(a.card_index, b.card_index)
-  if (indexOrder !== 0) return indexOrder
+  const secondaryOrder = sortColumn === 'series'
+    ? cardSortCollator.compare(a.card_index, b.card_index)
+    : cardSortCollator.compare(a.card_series, b.card_series)
+  if (secondaryOrder !== 0) return secondaryOrder
 
   return cardSortCollator.compare(a.card_rarity, b.card_rarity)
 }
@@ -230,6 +239,7 @@ export default function DatabasePage() {
   const [success, setSuccess] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [filterTcg, setFilterTcg] = useState<'all' | TcgType>('all')
+  const [sortColumn, setSortColumn] = useState<SortColumn>('series')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const [currentPage, setCurrentPage] = useState(1)
 
@@ -684,6 +694,16 @@ export default function DatabasePage() {
     setPreview(prev => (prev ? { ...prev, ...patch } : prev))
   }
 
+  function toggleSort(column: SortColumn) {
+    if (sortColumn === column) {
+      setSortDirection(direction => direction === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortColumn(column)
+      setSortDirection('asc')
+    }
+    setCurrentPage(1)
+  }
+
   const rarities = preview
     ? preview.tcg_type === 'PTCG' ? PTCG_RARITIES : OPCG_RARITIES
     : PTCG_RARITIES
@@ -704,10 +724,10 @@ export default function DatabasePage() {
       )
     })
     return matchingCards.sort((a, b) => {
-      const order = compareCardsBySeriesAndIndex(a, b)
+      const order = compareCardsByColumn(a, b, sortColumn)
       return sortDirection === 'asc' ? order : -order
     })
-  }, [cards, searchTerm, filterTcg, sortDirection])
+  }, [cards, searchTerm, filterTcg, sortColumn, sortDirection])
 
   return (
     <>
@@ -1158,24 +1178,6 @@ export default function DatabasePage() {
         </select>
         <button
           type="button"
-          className="btn btn-ghost"
-          onClick={() => {
-            setSortDirection(direction => direction === 'asc' ? 'desc' : 'asc')
-            setCurrentPage(1)
-          }}
-          aria-label={`Sort ${sortDirection === 'asc' ? 'descending' : 'ascending'} by series and card number`}
-          title={`Sorted ${sortDirection === 'asc' ? 'ascending' : 'descending'} by series and card number. Click to reverse.`}
-          style={{
-            minWidth: '2.75rem',
-            paddingInline: '0.7rem',
-            fontSize: '1.05rem',
-            lineHeight: 1,
-          }}
-        >
-          {sortDirection === 'asc' ? '↑' : '↓'}
-        </button>
-        <button
-          type="button"
           className="btn btn-danger"
           onClick={openConfirmDelete}
           disabled={cards.length === 0}
@@ -1211,8 +1213,34 @@ export default function DatabasePage() {
             <thead>
               <tr>
                 <th>TCG</th>
-                <th>Series</th>
-                <th>Card #</th>
+                <th aria-sort={sortColumn === 'series' ? sortDirection === 'asc' ? 'ascending' : 'descending' : 'none'}>
+                  <button
+                    type="button"
+                    className="table-sort-button"
+                    onClick={() => toggleSort('series')}
+                    aria-label={`Sort by series ${sortColumn === 'series' && sortDirection === 'asc' ? 'descending' : 'ascending'}`}
+                    title="Sort by series"
+                  >
+                    Series
+                    <span className="table-sort-button__icon" aria-hidden="true">
+                      {sortColumn === 'series' ? sortDirection === 'asc' ? '↑' : '↓' : '↕'}
+                    </span>
+                  </button>
+                </th>
+                <th aria-sort={sortColumn === 'cardIndex' ? sortDirection === 'asc' ? 'ascending' : 'descending' : 'none'}>
+                  <button
+                    type="button"
+                    className="table-sort-button"
+                    onClick={() => toggleSort('cardIndex')}
+                    aria-label={`Sort by card number ${sortColumn === 'cardIndex' && sortDirection === 'asc' ? 'descending' : 'ascending'}`}
+                    title="Sort by card number"
+                  >
+                    Card #
+                    <span className="table-sort-button__icon" aria-hidden="true">
+                      {sortColumn === 'cardIndex' ? sortDirection === 'asc' ? '↑' : '↓' : '↕'}
+                    </span>
+                  </button>
+                </th>
                 <th>Rarity</th>
                 <th>Name</th>
                 <th>Yuyutei</th>

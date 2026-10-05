@@ -253,6 +253,31 @@ body {
   border-bottom: 1px solid var(--border);
 }
 .data-table tr:hover td { background: var(--accent-light); }
+.table-sort-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+.table-sort-button:hover { color: var(--accent); }
+.table-sort-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+.table-sort-button__icon {
+  color: var(--accent);
+  font-size: 0.9rem;
+  line-height: 1;
+}
 
 /* ─── Inputs ─── */
 .input {

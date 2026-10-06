@@ -1116,7 +1116,7 @@ const gridTemplateColumns =
                     )}
                 </div>
               </div>
-              {total === 0 && (
+              {pendingDiscoveryCount > 0 && (
                 <button
                   type="button"
                   className="btn btn-primary"
@@ -1127,9 +1127,9 @@ const gridTemplateColumns =
                     padding: '0.45rem 0.85rem',
                     flexShrink: 0,
                   }}
-                  title="Confirm to queue these card_ids so the GitHub Actions worker will discover their SNKRDUNK apparel_id"
+                  title="Confirm to queue all cards missing a SNKRDUNK apparel_id"
                 >
-                  {discoverStarting ? 'Starting…' : 'Discover now'}
+                  {discoverStarting ? 'Starting…' : 'Discover all'}
                 </button>
               )}
             </div>

@@ -306,8 +306,7 @@ function discoverTriggerUrl(): string {
  *  don't surface the error to the user — the banner just stays in
  *  "waiting" state and the next page refresh will retry.
  */
-async function triggerDiscover(card_ids: string[]): Promise<boolean> {
-  if (card_ids.length === 0) return true
+async function triggerDiscoverAll(): Promise<boolean> {
   const anonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined)?.trim() ?? ''
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (anonKey) {
@@ -318,7 +317,7 @@ async function triggerDiscover(card_ids: string[]): Promise<boolean> {
     const r = await fetch(discoverTriggerUrl(), {
       method: 'POST',
       headers,
-      body: JSON.stringify({ card_ids }),
+      body: JSON.stringify({ enqueue_all: true }),
       cache: 'no-store',
     })
     return r.ok
@@ -346,10 +345,6 @@ export default function DatabaseValidationPage() {
   // SNKRDUNK. We surface this count in a banner so the user
   // knows why their newly-added card isn't appearing.
   const [pendingDiscoveryCount, setPendingDiscoveryCount] = useState(0)
-  // Card IDs of the rows that still need SNKRDUNK discovery. These
-  // are only sent to discover-trigger after the user explicitly
-  // confirms via the Validation-page button.
-  const [pendingDiscoveryIds, setPendingDiscoveryIds] = useState<string[]>([])
   // Tracks the in-flight state of the explicit "Discover now"
   // button. This never auto-starts discovery on mount or polling —
   // it only disables the button while the user-confirmed request is
@@ -418,10 +413,10 @@ export default function DatabaseValidationPage() {
       //      We surface their count in a banner so the user knows
       //      "I added a card but it doesn't show up" means the
       //      discover job hasn't run yet.
-      //   3) discover_queue status counts — lets the banner show a
-      //      progress bar with done/total for the active discovery
-      //      batch.
-      const [withId, withoutId, queueRows] = await Promise.all([
+      //   3) exact discover_queue status counts — lets the banner show
+      //      accurate progress even when the queue exceeds 1,000 rows.
+      const queueStatuses = ['pending', 'processing', 'done', 'failed'] as const
+      const [withId, withoutId, queueCounts] = await Promise.all([
         supabase
           .from('master_table')
           .select(
@@ -431,34 +426,37 @@ export default function DatabaseValidationPage() {
           .order('verify_status', { ascending: true, nullsFirst: true })
           .order('created_at', { ascending: true })
           .limit(500),
-        // Fetch up to 50 pending IDs. We cap at 50 because the
-        // discover-trigger Edge Function also caps at 50 per
-        // request, and we don't want to spam the queue if a big
-        // batch sneaks through.
+        // Fetch a small sample for the count query. The exact count is
+        // returned separately so large databases are not truncated at
+        // Supabase's response limit.
         supabase
           .from('master_table')
-          .select('id')
+          .select('id', { count: 'exact' })
           .is('snkrdunk_apparel_id', null)
           .order('created_at', { ascending: true })
           .limit(50),
-        // Counts of rows by status. RLS allows the authenticated
+        // Count each status server-side. RLS allows the authenticated
         // user to SELECT, so we can read counts without service role.
-        supabase
-          .from('discover_queue')
-          .select('status'),
+        Promise.all(
+          queueStatuses.map(status =>
+            supabase
+              .from('discover_queue')
+              .select('id', { count: 'exact', head: true })
+              .eq('status', status),
+          ),
+        ),
       ])
       if (withId.error) throw withId.error
       const data = (withId.data ?? []) as CardRow[]
       setRows(data)
-      setPendingDiscoveryCount((withoutId.data ?? []).length)
-      setPendingDiscoveryIds((withoutId.data ?? []).map(r => r.id))
-      // Tally queue status counts. We tolerate the queue query
-      // failing (it's a nice-to-have) without aborting the whole
-      // load.
+      setPendingDiscoveryCount(withoutId.count ?? (withoutId.data ?? []).length)
+      // Tally exact queue status counts. We tolerate individual count
+      // queries failing (they are a nice-to-have) without aborting the
+      // whole load.
       const qs = { pending: 0, processing: 0, done: 0, failed: 0 }
-      for (const r of (queueRows.data ?? []) as { status: string }[]) {
-        if (r.status in qs) {
-          qs[r.status as keyof typeof qs]++
+      for (const [index, status] of queueStatuses.entries()) {
+        if (!queueCounts[index].error) {
+          qs[status] = queueCounts[index].count ?? 0
         }
       }
       setQueueStatus(qs)
@@ -517,18 +515,18 @@ export default function DatabaseValidationPage() {
   // low-poly card aesthetic.
   const startDiscover = useCallback(() => {
     if (discoverStarting) return
-    if (pendingDiscoveryIds.length === 0) return
+    if (pendingDiscoveryCount === 0) return
     setDiscoverConfirmOpen(true)
-  }, [discoverStarting, pendingDiscoveryIds.length])
+  }, [discoverStarting, pendingDiscoveryCount])
 
   const confirmStartDiscover = useCallback(async () => {
     if (discoverStarting) return
-    if (pendingDiscoveryIds.length === 0) return
+    if (pendingDiscoveryCount === 0) return
     setDiscoverConfirmOpen(false)
     setError(null)
     setDiscoverStarting(true)
     try {
-      const ok = await triggerDiscover(pendingDiscoveryIds)
+      const ok = await triggerDiscoverAll()
       if (!ok) {
         setError('Failed to start SNKRDUNK discovery. Please try again.')
         return
@@ -537,7 +535,7 @@ export default function DatabaseValidationPage() {
     } finally {
       setDiscoverStarting(false)
     }
-  }, [discoverStarting, pendingDiscoveryIds, load])
+  }, [discoverStarting, pendingDiscoveryCount, load])
 
   const cancelStartDiscover = useCallback(() => {
     if (discoverStarting) return
@@ -1123,7 +1121,7 @@ const gridTemplateColumns =
                   type="button"
                   className="btn btn-primary"
                   onClick={() => void startDiscover()}
-                  disabled={discoverStarting || pendingDiscoveryIds.length === 0}
+                  disabled={discoverStarting || pendingDiscoveryCount === 0}
                   style={{
                     fontSize: '0.8rem',
                     padding: '0.45rem 0.85rem',
@@ -1772,8 +1770,8 @@ const gridTemplateColumns =
             >
               Queue{' '}
               <strong style={{ color: 'var(--text-primary)' }}>
-                {pendingDiscoveryIds.length} card
-                {pendingDiscoveryIds.length === 1 ? '' : 's'}
+                {pendingDiscoveryCount} card
+                {pendingDiscoveryCount === 1 ? '' : 's'}
               </strong>{' '}
               for the SNKRDUNK lookup worker. The worker searches SNKRDUNK for
               the missing <code>apparel_id</code> values; matched cards will

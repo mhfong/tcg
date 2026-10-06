@@ -1,6 +1,6 @@
 // Supabase Edge Function: discover-trigger
 //
-// Enqueues one or more card_ids into the discover_queue table so the
+// Enqueues one or more card_ids, or all cards missing an apparel_id, into the discover_queue table so the
 // scripts/discover_snkrdunk_apparel_ids.py worker (driven by the
 // .github/workflows/discover.yml cron) can pick them up and look up
 // their SNKRDUNK apparel_ids.
@@ -17,6 +17,7 @@
 //
 // Request body (POST application/json):
 //   { "card_ids": ["opcgst01st21014sr10099", "ptcgsv02a201165sar10507"] }
+//   { "enqueue_all": true }
 //
 // Response (200):
 //   { "queued": 2, "skipped": 0, "ids": [...] }
@@ -52,6 +53,8 @@ function jsonResponse(body: Record<string, unknown>, status = 200): Response {
 }
 
 const CARD_ID_RE = /^[a-z0-9]+$/i
+const PAGE_SIZE = 1000
+const INSERT_CHUNK_SIZE = 500
 
 async function handle(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") {
@@ -61,26 +64,30 @@ async function handle(req: Request): Promise<Response> {
     return jsonResponse({ error: "POST required" }, 405)
   }
 
-  // Parse + validate body. card_ids is required, non-empty array of
-  // alphanumeric ids. We cap at 50 per request to keep payloads
-  // small (the page usually sends 1-3 at a time).
-  let body: { card_ids?: unknown }
+  // Parse + validate body. Explicit card_ids requests remain capped at
+  // 50; the enqueue_all mode reads IDs server-side in pages instead of
+  // sending a large list through the browser.
+  let body: { card_ids?: unknown; enqueue_all?: unknown }
   try {
-    body = (await req.json()) as { card_ids?: unknown }
+    body = (await req.json()) as {
+      card_ids?: unknown
+      enqueue_all?: unknown
+    }
   } catch {
     return jsonResponse({ error: "invalid JSON body" }, 400)
   }
+  const enqueueAll = body.enqueue_all === true
   const raw = Array.isArray(body.card_ids) ? body.card_ids : []
-  if (raw.length === 0) {
+  if (!enqueueAll && raw.length === 0) {
     return jsonResponse({ error: "card_ids array required" }, 400)
   }
-  if (raw.length > 50) {
+  if (!enqueueAll && raw.length > 50) {
     return jsonResponse({ error: "too many card_ids (max 50)" }, 400)
   }
-  const card_ids = raw.filter(
+  let card_ids = raw.filter(
     (x): x is string => typeof x === "string" && CARD_ID_RE.test(x),
   )
-  if (card_ids.length === 0) {
+  if (!enqueueAll && card_ids.length === 0) {
     return jsonResponse(
       { error: "no valid card_ids (expected alphanumeric)" },
       400,
@@ -104,34 +111,70 @@ async function handle(req: Request): Promise<Response> {
     auth: { persistSession: false },
   })
 
+  if (enqueueAll) {
+    const missingIds: string[] = []
+    for (let offset = 0; ; offset += PAGE_SIZE) {
+      const { data, error } = await sb
+        .from("master_table")
+        .select("id")
+        .is("snkrdunk_apparel_id", null)
+        .order("id", { ascending: true })
+        .range(offset, offset + PAGE_SIZE - 1)
+      if (error) {
+        return jsonResponse({ error: error.message }, 500)
+      }
+      missingIds.push(...(data ?? []).map(row => row.id))
+      if (!data || data.length < PAGE_SIZE) break
+    }
+    card_ids = missingIds.filter(id => CARD_ID_RE.test(id))
+  }
+
+  card_ids = [...new Set(card_ids)]
+  if (card_ids.length === 0) {
+    return jsonResponse({
+      queued: 0,
+      skipped: 0,
+      ids: [],
+      enqueue_all: enqueueAll,
+      dispatched: false,
+      dispatch_error: "no cards need SNKRDUNK discovery",
+    })
+  }
+
   // Build the rows we want to insert. The unique partial index
   // uniq_discover_queue_card_pending (where status='pending')
   // ensures at most one pending row per card. We use a two-step
   // approach to dedupe in JS rather than `upsert onConflict card_id`,
   // because that requires a plain UNIQUE on card_id — we want to
   // keep history (done/failed rows) so a plain UNIQUE won't do.
-  const { data: existing, error: exErr } = await sb
-    .from("discover_queue")
-    .select("card_id")
-    .eq("status", "pending")
-    .in("card_id", card_ids)
-  if (exErr) {
-    return jsonResponse({ error: exErr.message }, 500)
+  const already = new Set<string>()
+  for (let offset = 0; ; offset += PAGE_SIZE) {
+    const { data, error } = await sb
+      .from("discover_queue")
+      .select("card_id")
+      .eq("status", "pending")
+      .order("id", { ascending: true })
+      .range(offset, offset + PAGE_SIZE - 1)
+    if (error) {
+      return jsonResponse({ error: error.message }, 500)
+    }
+    for (const row of data ?? []) already.add(row.card_id)
+    if (!data || data.length < PAGE_SIZE) break
   }
-  const already = new Set((existing ?? []).map(r => r.card_id))
   const toInsert = card_ids
     .filter(id => !already.has(id))
     .map(card_id => ({ card_id, status: "pending" }))
 
   let queued = 0
-  if (toInsert.length > 0) {
+  for (let offset = 0; offset < toInsert.length; offset += INSERT_CHUNK_SIZE) {
+    const chunk = toInsert.slice(offset, offset + INSERT_CHUNK_SIZE)
     const { error: insErr } = await sb
       .from("discover_queue")
-      .insert(toInsert)
+      .insert(chunk)
     if (insErr) {
       return jsonResponse({ error: insErr.message }, 500)
     }
-    queued = toInsert.length
+    queued += chunk.length
   }
   const skipped = card_ids.length - queued
 
@@ -184,7 +227,14 @@ async function handle(req: Request): Promise<Response> {
     dispatchError = "skipped (already pending)"
   }
 
-  return jsonResponse({ queued, skipped, ids: card_ids, dispatched, dispatch_error: dispatchError })
+  return jsonResponse({
+    queued,
+    skipped,
+    ids: enqueueAll ? [] : card_ids,
+    enqueue_all: enqueueAll,
+    dispatched,
+    dispatch_error: dispatchError,
+  })
 }
 
 serve(handle)

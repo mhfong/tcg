@@ -16,7 +16,9 @@ apparel_id using a layered strategy:
        * (パラレル)/(Parallel) hint  (+15)  e.g. for SP rarity
        * English title fragment      (+10)  e.g. 'Sanji', 'Charizard'
        * "英語版" / [EN] penalty       (-5)  prefer JP over EN reprint
-       * コミパラ / Comic Parallel   (-10) prefer non-commemorative
+         * GOLD-DON title must contain ドン!!カード and スーパーパラレル
+         * Yuyu-tei スーパーパラレル name must match SNKRDUNK コミパラ
+         * unexpected コミパラ / Comic Parallel title penalty (-10)
        * アジア版                     (-5)  prefer JP over Asia
   3. Image similarity fallback (only when title score ties):
        * Fetch the yuyu-tei card image (from card.yuyu-tei.jp) and the
@@ -161,7 +163,7 @@ def read_yuyutei_image_url(card: dict) -> str:
 
 # ─── Scoring ──────────────────────────────────────────────────────────────
 RARITY_KEYWORDS = {
-    "SP":    ["SEC-P", "SR-P", "R-P", "(パラレル)", "(Parallel)"],
+    "SP":    ["SPC", "SEC-P", "SR-P", "R-P", "(パラレル)", "(Parallel)"],
     "P-SEC": ["SEC-P"],
     "SEC":   ["SEC"],
     "SR":    ["SR"],
@@ -175,7 +177,7 @@ RARITY_KEYWORDS = {
     "P-L":   ["L"],
     "P-R":   ["R"],
     "P-SR":  ["SR"],
-    "GOLD-DON": ["GOLD-DON", "Gold Don"],
+    "GOLD-DON": ["スーパーパラレル"],
 }
 
 TCG_TITLE_HINTS = {
@@ -200,6 +202,17 @@ def score_title(card: dict, og_title: str) -> int:
         return 0
     title = og_title
     score = 0
+    rarity = (card.get("card_rarity") or "").upper()
+    name = strip_index_suffix(card.get("card_name") or "")
+    requires_komipara_title = (
+        rarity != "GOLD-DON" and "スーパーパラレル" in name
+    )
+    if rarity == "GOLD-DON" and not all(
+        marker in title for marker in ("ドン!!カード", "スーパーパラレル")
+    ):
+        return 0
+    if requires_komipara_title and "コミパラ" not in title:
+        return 0
 
     # card_index \u2014 strongest signal (e.g. "OP05-119", "201/165")
     idx = (card.get("card_index") or "").upper()
@@ -212,7 +225,6 @@ def score_title(card: dict, og_title: str) -> int:
                 break
 
     # Rarity \u2014 second-strongest
-    rarity = (card.get("card_rarity") or "").upper()
     for kw in RARITY_KEYWORDS.get(rarity, []):
         if kw.upper() in title.upper():
             score += 30
@@ -226,7 +238,6 @@ def score_title(card: dict, og_title: str) -> int:
             break
 
     # Card name fragment
-    name = strip_index_suffix(card.get("card_name") or "")
     if name:
         # Use the first 6 chars (\u65e5\u672c\u8a9e\u30d1\u30e9\u30ec\u30eb\u306f\u300c\u30d1\u30e9\u30ec\u30eb\u300d\u304c\u5e38\u306b\u542b\u307e\u308c\u308b
         # 1-character fragments are too noisy)
@@ -237,7 +248,10 @@ def score_title(card: dict, og_title: str) -> int:
     # Penalties
     if "\u82f1\u8a9e\u7248" in title or "[EN]" in title or "[English]" in title:
         score -= 5
-    if "\u30b3\u30df\u30d1\u30e9" in title or "Comic Parallel" in title:
+    if (
+        ("\u30b3\u30df\u30d1\u30e9" in title or "Comic Parallel" in title)
+        and not requires_komipara_title
+    ):
         score -= 10
     if "THE BEST" in title.upper():
         score -= 5

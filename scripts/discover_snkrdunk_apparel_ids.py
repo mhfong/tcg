@@ -66,6 +66,7 @@ import re
 import statistics
 import sys
 import time
+import unicodedata
 from pathlib import Path
 from typing import Optional
 
@@ -190,6 +191,28 @@ def strip_index_suffix(name: str) -> str:
     return re.sub(r"\s*\[[A-Z]{2,4}[-‐−]?\d+\]\s*", " ", name or "").strip()
 
 
+def search_keywords(card: dict) -> list[str]:
+    idx = (card.get("card_index") or "").strip()
+    name = strip_index_suffix(card.get("card_name") or "")
+    rarity = (card.get("card_rarity") or "").upper()
+    keywords = []
+    if idx:
+        if rarity == "SP":
+            keywords.append(f"{idx} SPC")
+        keywords.append(idx)
+        # e.g. "OP05-119" -> "OP05 119" sometimes wins
+        keywords.append(idx.replace("-", " "))
+    if rarity == "GOLD-DON":
+        generic_fragments = {"ドン!!カード", "パラレル", "スーパーパラレル"}
+        for fragment in re.findall(r"[^()（）]+", name):
+            fragment = fragment.strip()
+            if fragment and fragment not in generic_fragments:
+                keywords.append(fragment)
+    if name:
+        keywords.append(f"{name} {idx}".strip())
+    return keywords
+
+
 def score_title(card: dict, og_title: str) -> int:
     """Score a SNKRDUNK candidate's OG title against a master_table row.
 
@@ -200,10 +223,12 @@ def score_title(card: dict, og_title: str) -> int:
     """
     if not og_title:
         return 0
-    title = og_title
+    title = unicodedata.normalize("NFKC", og_title)
     score = 0
     rarity = (card.get("card_rarity") or "").upper()
-    name = strip_index_suffix(card.get("card_name") or "")
+    name = unicodedata.normalize(
+        "NFKC", strip_index_suffix(card.get("card_name") or "")
+    )
     requires_komipara_title = (
         rarity != "GOLD-DON" and "スーパーパラレル" in name
     )
@@ -280,9 +305,13 @@ async def search_snkrdunk(page, keyword: str) -> list[dict]:
 }
     """)
     await page.wait_for_timeout(700)
-    inp = page.locator('input[name="keywords"]').first
+    form = page.locator('form[action="/search"]').first
+    inp = form.locator('input[name="keywords"]')
     await inp.fill(keyword, force=True)
-    await inp.press("Enter")
+    await form.evaluate(
+        "(form) => HTMLFormElement.prototype.submit.call(form)"
+    )
+    await page.wait_for_url("**/search?keywords=*", timeout=30_000)
     await page.wait_for_timeout(3_500)
     cards = await page.evaluate("""
 () => {
@@ -401,18 +430,11 @@ async def discover_one(page, card: dict) -> dict:
     Returns a dict with keys: master_id, apparel_id (or None), score,
     runner_up_id, runner_up_score, all_candidates (top few).
     """
-    idx = (card.get("card_index") or "").strip()
-    name = strip_index_suffix(card.get("card_name") or "")
-    keywords = []
-    if idx:
-        keywords.append(idx)
-        # e.g. "OP05-119" -> "OP05 119" sometimes wins
-        keywords.append(idx.replace("-", " "))
-    if name:
-        keywords.append(f"{name} {idx}".strip())
+    keywords = search_keywords(card)
 
     candidates: list[dict] = []
     used_kw = ""
+    scored: list[dict] = []
     for kw in keywords[:3]:
         if not kw.strip():
             continue
@@ -421,22 +443,28 @@ async def discover_one(page, card: dict) -> dict:
         except Exception as e:
             print(f"  search error for {kw!r}: {e}", file=sys.stderr)
             continue
-        if cs:
-            candidates = cs
-            used_kw = kw
+        if not cs:
+            continue
+
+        candidates = cs
+        used_kw = kw
+        candidate_scores: list[dict] = []
+        for c in candidates[:15]:  # cap to 15 - product page = ~2s each
+            s = await score_candidate(page, card, c["apparel_id"])
+            if s > 0:
+                candidate_scores.append({"apparel_id": c["apparel_id"],
+                                         "name": c.get("name", ""),
+                                         "score": s})
+        if candidate_scores:
+            scored = candidate_scores
             break
-    if not candidates:
+
+    if not scored:
         return {"master_id": card["id"], "apparel_id": None,
-                "score": 0, "runner_up_id": None, "runner_up_score": 0,
+                "score": 0, "name": "", "runner_up_id": None,
+                "runner_up_score": 0,
                 "all_candidates": [], "search_keyword": used_kw}
 
-    scored: list[dict] = []
-    for c in candidates[:15]:  # cap to 15 \u2014 product page = ~2s each
-        s = await score_candidate(page, card, c["apparel_id"])
-        if s > 0:
-            scored.append({"apparel_id": c["apparel_id"],
-                           "name": c.get("name", ""),
-                           "score": s})
     scored.sort(key=lambda x: -x["score"])
 
     best = scored[0] if scored else None

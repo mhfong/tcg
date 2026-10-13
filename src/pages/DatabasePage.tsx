@@ -10,6 +10,10 @@ import { getSingleCardNameOverride } from '../lib/yuyuteiCardNames'
 
 type TcgType = 'PTCG' | 'OPCG'
 
+interface DatabaseCard extends CardDefinition {
+  snkrdunk_apparel_id?: string | null
+}
+
 interface PreviewCard {
   tcg_type: TcgType
   card_series: string
@@ -34,6 +38,10 @@ interface YuyuteiCardsResponse {
   }>
 }
 
+interface SnkrdunkImageResponse {
+  image?: string
+}
+
 type Stage = 'input' | 'preview'
 
 type ParseProxyMode = 'blocked' | 'network'
@@ -46,7 +54,7 @@ type SortColumn = 'tcg' | 'series' | 'cardIndex' | 'rarity'
 
 const DATABASE_PAGE_SIZE = 50
 
-function yuyuteiImageUrl(card: CardDefinition): string {
+function yuyuteiImageUrl(card: DatabaseCard): string {
   const url = (card.url_yuyutei ?? '').trim()
   if (!url) return ''
   const segments = url.split('/').filter(Boolean)
@@ -55,6 +63,131 @@ function yuyuteiImageUrl(card: CardDefinition): string {
   if (!slug || !series) return ''
   const tcgPath = card.tcg_type === 'PTCG' ? 'poc' : 'opc'
   return `https://card.yuyu-tei.jp/${tcgPath}/front/${series}/${slug}.jpg`
+}
+
+function snkrdunkProxiedImageUrl(rawUrl: string): string {
+  const baseUrl =
+    (
+      (import.meta.env.VITE_SNKRDUNK_META_URL as string | undefined)?.trim() ||
+      (
+        ((import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim() ?? '')
+      ).replace(/\/+$/, '') + '/functions/v1/snkrdunk-meta'
+    )
+  return `${baseUrl}/image?u=${encodeURIComponent(rawUrl)}`
+}
+
+async function fetchSnkrdunkImage(apparelId: string): Promise<string> {
+  const explicitUrl = (
+    import.meta.env.VITE_SNKRDUNK_META_URL as string | undefined
+  )?.trim()
+  const baseUrl =
+    explicitUrl ||
+    ((import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim() ?? '')
+      .replace(/\/+$/, '') +
+    '/functions/v1/snkrdunk-meta'
+  const anonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined)?.trim() ?? ''
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (anonKey) {
+    headers.apikey = anonKey
+    headers.Authorization = `Bearer ${anonKey}`
+  }
+
+  try {
+    const response = await fetch(baseUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ apparel_id: apparelId }),
+      cache: 'no-store',
+    })
+    if (!response.ok) return ''
+    const data = (await response.json()) as SnkrdunkImageResponse
+    return data.image ?? ''
+  } catch {
+    return ''
+  }
+}
+
+function DatabasePreview({ card }: { card: DatabaseCard }) {
+  const previewRef = useRef<HTMLDivElement>(null)
+  const [shouldLoadSnkrdunk, setShouldLoadSnkrdunk] = useState(
+    !card.snkrdunk_apparel_id,
+  )
+  const [snkrdunkImage, setSnkrdunkImage] = useState('')
+  const fallbackImage = yuyuteiImageUrl(card)
+
+  useEffect(() => {
+    if (!card.snkrdunk_apparel_id || shouldLoadSnkrdunk) return
+    if (typeof IntersectionObserver === 'undefined') {
+      setShouldLoadSnkrdunk(true)
+      return
+    }
+
+    const observer = new IntersectionObserver(
+      entries => {
+        if (entries[0]?.isIntersecting) {
+          setShouldLoadSnkrdunk(true)
+          observer.disconnect()
+        }
+      },
+      { rootMargin: '200px' },
+    )
+    const element = previewRef.current
+    if (element) observer.observe(element)
+    return () => observer.disconnect()
+  }, [card.snkrdunk_apparel_id, shouldLoadSnkrdunk])
+
+  useEffect(() => {
+    if (!shouldLoadSnkrdunk || !card.snkrdunk_apparel_id) return
+    let cancelled = false
+    void fetchSnkrdunkImage(card.snkrdunk_apparel_id).then(image => {
+      if (!cancelled) setSnkrdunkImage(image)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [card.snkrdunk_apparel_id, shouldLoadSnkrdunk])
+
+  const imageUrl = snkrdunkImage
+    ? snkrdunkProxiedImageUrl(snkrdunkImage)
+    : fallbackImage
+
+  return (
+    <div
+      ref={previewRef}
+      style={{ width: 40, minHeight: 56, display: 'flex', alignItems: 'center' }}
+    >
+      {imageUrl ? (
+        <img
+          src={imageUrl}
+          alt={card.card_name || card.id}
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          style={{
+            width: 40,
+            height: 56,
+            objectFit: 'contain',
+            borderRadius: 4,
+            background: '#fff',
+            display: 'block',
+          }}
+          onError={event => {
+            const image = event.currentTarget
+            if (snkrdunkImage && image.dataset.fallbackStage !== 'direct') {
+              image.dataset.fallbackStage = 'direct'
+              image.src = snkrdunkImage
+            } else if (fallbackImage && image.src !== fallbackImage) {
+              image.dataset.fallbackStage = 'yuyutei'
+              image.src = fallbackImage
+            } else {
+              image.style.display = 'none'
+            }
+          }}
+        />
+      ) : (
+        <span style={{ color: 'var(--text-secondary)' }}>—</span>
+      )}
+    </div>
+  )
 }
 
 function nextSortState(state: SortState): SortState {
@@ -220,7 +353,7 @@ export default function DatabasePage() {
   const configuredPublicParseUrls = configuredParseUrls.filter(
     url => !isLocalParseUrl(url),
   )
-  const [cards, setCards] = useState<CardDefinition[]>([])
+  const [cards, setCards] = useState<DatabaseCard[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [stage, setStage] = useState<Stage>('input')
@@ -285,7 +418,7 @@ export default function DatabasePage() {
   async function loadCards() {
     setLoading(true)
     const queryPageSize = 1000
-    const loadedCards: CardDefinition[] = []
+    const loadedCards: DatabaseCard[] = []
     let offset = 0
     let failed = false
 
@@ -301,7 +434,7 @@ export default function DatabasePage() {
         break
       }
 
-      const page = (data ?? []) as CardDefinition[]
+      const page = (data ?? []) as DatabaseCard[]
       loadedCards.push(...page)
       if (page.length < queryPageSize) break
       offset += queryPageSize
@@ -1294,24 +1427,7 @@ export default function DatabasePage() {
               {visibleCards.map(c => (
                 <tr key={c.id}>
                   <td>
-                    {yuyuteiImageUrl(c) ? (
-                      <img
-                        src={yuyuteiImageUrl(c)}
-                        alt={c.card_name || c.id}
-                        loading="lazy"
-                        referrerPolicy="no-referrer"
-                        style={{
-                          width: 40,
-                          height: 56,
-                          objectFit: 'contain',
-                          borderRadius: 4,
-                          background: '#fff',
-                          display: 'block',
-                        }}
-                      />
-                    ) : (
-                      <span style={{ color: 'var(--text-secondary)' }}>—</span>
-                    )}
+                    <DatabasePreview card={c} />
                   </td>
                   <td>
                     <span className={`tag tag-${c.tcg_type.toLowerCase()}`}>

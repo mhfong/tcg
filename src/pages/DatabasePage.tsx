@@ -46,6 +46,17 @@ type SortColumn = 'tcg' | 'series' | 'cardIndex' | 'rarity'
 
 const DATABASE_PAGE_SIZE = 50
 
+function yuyuteiImageUrl(card: CardDefinition): string {
+  const url = (card.url_yuyutei ?? '').trim()
+  if (!url) return ''
+  const segments = url.split('/').filter(Boolean)
+  const slug = segments[segments.length - 1] ?? ''
+  const series = segments[segments.length - 2] ?? ''
+  if (!slug || !series) return ''
+  const tcgPath = card.tcg_type === 'PTCG' ? 'poc' : 'opc'
+  return `https://card.yuyu-tei.jp/${tcgPath}/front/${series}/${slug}.jpg`
+}
+
 function nextSortState(state: SortState): SortState {
   if (state === 'asc') return 'desc'
   if (state === 'desc') return null
@@ -1218,6 +1229,7 @@ export default function DatabasePage() {
           <table className="data-table">
             <thead>
               <tr>
+                <th>Preview</th>
                 <th aria-sort={tcgSortDirection === null ? 'none' : tcgSortDirection === 'asc' ? 'ascending' : 'descending'}>
                   <button
                     type="button"
@@ -1281,6 +1293,26 @@ export default function DatabasePage() {
             <tbody>
               {visibleCards.map(c => (
                 <tr key={c.id}>
+                  <td>
+                    {yuyuteiImageUrl(c) ? (
+                      <img
+                        src={yuyuteiImageUrl(c)}
+                        alt={c.card_name || c.id}
+                        loading="lazy"
+                        referrerPolicy="no-referrer"
+                        style={{
+                          width: 40,
+                          height: 56,
+                          objectFit: 'contain',
+                          borderRadius: 4,
+                          background: '#fff',
+                          display: 'block',
+                        }}
+                      />
+                    ) : (
+                      <span style={{ color: 'var(--text-secondary)' }}>—</span>
+                    )}
+                  </td>
                   <td>
                     <span className={`tag tag-${c.tcg_type.toLowerCase()}`}>
                       {c.tcg_type}

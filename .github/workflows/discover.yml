@@ -190,8 +190,22 @@ jobs:
                   )
                   row = json.loads(urllib.request.urlopen(sb_req).read())
                   apparel_id = (row[0] or {}).get("snkrdunk_apparel_id") if row else None
-                  # Mark done. If apparel_id is still null the script ran
-                  # but found no match — that's still a 'done' state.
+                  # A successful run with no apparel_id means discovery
+                  # completed without a match. Mark the card unidentified
+                  # so it enters Validation for manual assignment instead
+                  # of remaining invisible in the null-apparel backlog.
+                  if not apparel_id:
+                      unidentified_patch = json.dumps({
+                          "verify_status": "unidentified",
+                      }).encode()
+                      unidentified_req = urllib.request.Request(
+                          f"{url}/rest/v1/master_table?id=eq.{card_id}",
+                          data=unidentified_patch,
+                          headers=headers,
+                          method="PATCH",
+                      )
+                      urllib.request.urlopen(unidentified_req).read()
+                  # Mark the queue row done after the master-table update.
                   patch = json.dumps({
                       "status": "done",
                       "completed_at": "now()",

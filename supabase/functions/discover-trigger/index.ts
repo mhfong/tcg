@@ -118,6 +118,7 @@ async function handle(req: Request): Promise<Response> {
         .from("master_table")
         .select("id")
         .is("snkrdunk_apparel_id", null)
+        .is("verify_status", null)
         .order("id", { ascending: true })
         .range(offset, offset + PAGE_SIZE - 1)
       if (error) {

@@ -15,7 +15,7 @@ interface CardRow {
   url_yuyutei: string | null
   snkrdunk_apparel_id: string | null
   verified_at: string | null
-  verify_status: 'verified' | 'rejected' | null
+  verify_status: 'verified' | 'rejected' | 'unidentified' | null
 }
 
 interface SnkrdunkMetadata {
@@ -50,6 +50,11 @@ function yuyuteiImageUrl(card: CardRow): string {
   if (!slug || !series) return ''
   const tcgPath = card.tcg_type === 'PTCG' ? 'poc' : 'opc'
   return `https://card.yuyu-tei.jp/${tcgPath}/front/${series}/${slug}.jpg`
+}
+
+function yuyuteiProductIndex(card: CardRow): string {
+  const segments = (card.url_yuyutei ?? '').split('/').filter(Boolean)
+  return segments[segments.length - 1] ?? ''
 }
 
 function snkrdunkProductUrl(apparel_id: string): string {
@@ -164,6 +169,167 @@ async function fetchSnkrdunkMeta(apparel_id: string): Promise<SnkrdunkMetadata> 
   } catch {
     return { apparel_id, title: '', image: '', brand: '', fetched: false }
   }
+}
+
+function VerifiedPreviewPair({ card }: { card: CardRow }) {
+  const previewRef = useRef<HTMLDivElement>(null)
+  const [shouldLoad, setShouldLoad] = useState(false)
+  const [meta, setMeta] = useState<SnkrdunkMetadata | null>(null)
+  const [snkrdunkSource, setSnkrdunkSource] = useState('')
+  const [croppedSnkrdunkSource, setCroppedSnkrdunkSource] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (shouldLoad || typeof IntersectionObserver === 'undefined') {
+      setShouldLoad(true)
+      return
+    }
+
+    const observer = new IntersectionObserver(
+      entries => {
+        if (entries[0]?.isIntersecting) {
+          setShouldLoad(true)
+          observer.disconnect()
+        }
+      },
+      { rootMargin: '300px' },
+    )
+    const element = previewRef.current
+    if (element) observer.observe(element)
+    return () => observer.disconnect()
+  }, [shouldLoad])
+
+  useEffect(() => {
+    if (!shouldLoad || !card.snkrdunk_apparel_id) return
+    let cancelled = false
+    void fetchSnkrdunkMeta(card.snkrdunk_apparel_id).then(data => {
+      if (cancelled) return
+      setMeta(data)
+      setCroppedSnkrdunkSource(null)
+      setSnkrdunkSource(data.image ? snkrdunkImageSrc(data.image) : '')
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [card.snkrdunk_apparel_id, shouldLoad])
+
+  const imageStyle = {
+    width: 48,
+    height: 68,
+    objectFit: 'cover' as const,
+    borderRadius: 4,
+    background: 'transparent',
+    display: 'block',
+  }
+  const placeholderStyle = {
+    ...imageStyle,
+    display: 'grid',
+    placeItems: 'center',
+    color: 'var(--text-secondary)',
+    fontSize: '0.65rem',
+    textAlign: 'center' as const,
+  }
+  const visibleSnkrdunkSource = croppedSnkrdunkSource ?? snkrdunkSource
+
+  return (
+    <div
+      ref={previewRef}
+      style={{
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: '0.35rem',
+        flex: '0 0 auto',
+      }}
+    >
+      <div title="yuyu-tei preview">
+        {yuyuteiImageUrl(card) ? (
+          <img
+            src={yuyuteiImageUrl(card)}
+            alt={`${card.card_name || card.id} yuyu-tei preview`}
+            loading="lazy"
+            referrerPolicy="no-referrer"
+            style={imageStyle}
+          />
+        ) : (
+          <div style={placeholderStyle}>yuyu-tei</div>
+        )}
+      </div>
+      <div title="SNKRDUNK preview">
+        {visibleSnkrdunkSource ? (
+          <img
+            src={visibleSnkrdunkSource}
+            alt={`${card.card_name || card.id} SNKRDUNK preview`}
+            loading="lazy"
+            referrerPolicy="no-referrer"
+            style={imageStyle}
+            {...(snkrdunkSource && snkrdunkSource !== meta?.image
+              ? { crossOrigin: 'anonymous' as const }
+              : {})}
+            onLoad={event => {
+              if (croppedSnkrdunkSource || snkrdunkSource !== visibleSnkrdunkSource) {
+                return
+              }
+              void trimWhiteBorders(event.currentTarget).then(cropped => {
+                if (cropped) setCroppedSnkrdunkSource(cropped)
+              })
+            }}
+            onError={() => {
+              if (meta?.image && snkrdunkSource !== meta.image) {
+                markSnkrdunkProxyFailed(meta.image)
+                setCroppedSnkrdunkSource(null)
+                setSnkrdunkSource(meta.image)
+              }
+            }}
+          />
+        ) : (
+          <div style={placeholderStyle}>
+            {shouldLoad ? 'SNKRDUNK' : '...'}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function VerifiedSearchBar({
+  searchTerm,
+  onSearchTermChange,
+}: {
+  searchTerm: string
+  onSearchTermChange: (value: string) => void
+}) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.75rem',
+        padding: '0.75rem',
+        borderBottom: '1px solid var(--border)',
+      }}
+    >
+      <label
+        htmlFor="verified-card-search"
+        style={{
+          color: 'var(--text-secondary)',
+          fontSize: '0.8rem',
+          fontWeight: 600,
+          whiteSpace: 'nowrap',
+        }}
+      >
+        Search verified cards
+      </label>
+      <input
+        id="verified-card-search"
+        type="search"
+        className="form-input"
+        placeholder="Search by id, name, index, rarity, or apparel id"
+        value={searchTerm}
+        onChange={event => onSearchTermChange(event.target.value)}
+        aria-label="Search verified cards"
+        style={{ flex: 1, minWidth: 180 }}
+      />
+    </div>
+  )
 }
 
 /** Resolve the base URL for the discover-trigger Edge Function.
@@ -282,26 +448,17 @@ export default function DatabaseValidationPage() {
     setLoading(true)
     setError(null)
     try {
-      // Two queries in parallel:
-      //   1) Cards that have a snkrdunk_apparel_id — these drive the
-      //      validation queue (Unverified / Verified / Rejected).
-      //   2) Cards WITHOUT a snkrdunk_apparel_id — these need the
-      //      discover script to run before they can be validated.
-      //      We surface their count in a banner so the user knows
-      //      "I added a card but it doesn't show up" means the
-      //      discover job hasn't run yet.
-      // Three parallel queries:
-      //   1) Cards that have a snkrdunk_apparel_id — these drive the
-      //      validation queue (Unverified / Verified / Rejected).
-      //   2) Cards WITHOUT a snkrdunk_apparel_id — these need the
-      //      discover script to run before they can be validated.
-      //      We surface their count in a banner so the user knows
-      //      "I added a card but it doesn't show up" means the
-      //      discover job hasn't run yet.
-      //   3) exact discover_queue status counts — lets the banner show
-      //      accurate progress even when the queue exceeds 1,000 rows.
+        // Three parallel queries:
+        //   1) Cards with an apparel_id plus cards marked unidentified —
+        //      these drive the validation queue (Unverified / Verified /
+        //      Rejected). Unidentified cards are included for manual
+        //      apparel_id assignment after a no-match discovery result.
+        //   2) Cards without an apparel_id and without an explicit
+        //      unidentified status — these still need discovery.
+        //   3) Exact discover_queue status counts — lets the banner show
+        //      accurate progress even when the queue exceeds 1,000 rows.
       const queueStatuses = ['pending', 'processing', 'done', 'failed'] as const
-      const loadCardsWithApparel = async () => {
+      const loadValidationCards = async () => {
         const loadedCards: CardRow[] = []
         let offset = 0
 
@@ -311,7 +468,7 @@ export default function DatabaseValidationPage() {
             .select(
               'id,tcg_type,card_series,card_index,card_name,card_rarity,url_yuyutei,snkrdunk_apparel_id,verified_at,verify_status',
             )
-            .not('snkrdunk_apparel_id', 'is', null)
+            .or('snkrdunk_apparel_id.not.is.null,verify_status.eq.unidentified')
             .order('verify_status', { ascending: true, nullsFirst: true })
             .order('created_at', { ascending: true })
             .range(offset, offset + VALIDATION_FETCH_PAGE_SIZE - 1)
@@ -326,7 +483,7 @@ export default function DatabaseValidationPage() {
         return { data: loadedCards, error: null }
       }
       const [withId, withoutId, queueCounts] = await Promise.all([
-        loadCardsWithApparel(),
+        loadValidationCards(),
         // Fetch a small sample for the count query. The exact count is
         // returned separately so large databases are not truncated at
         // Supabase's response limit.
@@ -334,6 +491,7 @@ export default function DatabaseValidationPage() {
           .from('master_table')
           .select('id', { count: 'exact' })
           .is('snkrdunk_apparel_id', null)
+          .is('verify_status', null)
           .order('created_at', { ascending: true })
           .limit(50),
         // Count each status server-side. RLS allows the authenticated
@@ -484,10 +642,14 @@ export default function DatabaseValidationPage() {
   // (which indexes `rows`, not `filtered`) stays stable across filter changes.
   const filtered = useMemo(() => {
     const q = searchTerm.trim().toLowerCase()
-    return rows
+    const matchingRows = rows
       .map((r, originalIdx) => ({ r, originalIdx }))
       .filter(({ r }) => {
-        if (filter === 'unverified' && r.verify_status !== null) return false
+        if (
+          filter === 'unverified' &&
+          r.verify_status !== null &&
+          r.verify_status !== 'unidentified'
+        ) return false
         if (filter === 'verified' && r.verify_status !== 'verified') return false
         if (filter === 'rejected' && r.verify_status !== 'rejected') return false
         if (!q) return true
@@ -499,6 +661,14 @@ export default function DatabaseValidationPage() {
           (r.snkrdunk_apparel_id ?? '').includes(q)
         )
       })
+
+    if (filter !== 'verified') return matchingRows
+
+    return matchingRows.sort((a, b) => {
+      const aTime = a.r.verified_at ? Date.parse(a.r.verified_at) : 0
+      const bTime = b.r.verified_at ? Date.parse(b.r.verified_at) : 0
+      return bTime - aTime
+    })
   }, [rows, filter, searchTerm])
 
   const verifiedPageCount = Math.max(
@@ -537,7 +707,7 @@ export default function DatabaseValidationPage() {
   const counts = useMemo(() => {
     const c = { unverified: 0, verified: 0, rejected: 0 }
     for (const r of rows) {
-      if (r.verify_status === null) c.unverified++
+      if (r.verify_status === null || r.verify_status === 'unidentified') c.unverified++
       else if (r.verify_status === 'verified') c.verified++
       else if (r.verify_status === 'rejected') c.rejected++
     }
@@ -786,7 +956,7 @@ const gridTemplateColumns =
     const base = myIdx === -1 ? -1 : myIdx
     for (let off = 1; base + off < filtered.length; off++) {
       const cand = rows[filtered[base + off].originalIdx]
-      if (cand.verify_status === null) {
+      if (cand.verify_status === null || cand.verify_status === 'unidentified') {
         setCursor(filtered[base + off].originalIdx)
         return
       }
@@ -886,16 +1056,18 @@ const gridTemplateColumns =
             )
           })}
         </div>
-        <div style={{ flex: 1, minWidth: 200 }}>
-          <input
-            type="search"
-            className="form-input"
-            placeholder="Filter by id / name / index / rarity / apparel_id…"
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            aria-label="Filter validation queue"
-          />
-        </div>
+        {filter !== 'verified' && (
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <input
+              type="search"
+              className="form-input"
+              placeholder="Filter by id / name / index / rarity / apparel_id…"
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              aria-label="Filter validation queue"
+            />
+          </div>
+        )}
         <div style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
           {filtered.length === 0
             ? 'no matches'
@@ -1206,17 +1378,30 @@ const gridTemplateColumns =
         </div>
       )}
 
+      {filter === 'verified' && !loading && filtered.length === 0 && (
+        <div className="lp-card" style={{ padding: 0, marginBottom: '1rem' }}>
+          <VerifiedSearchBar
+            searchTerm={searchTerm}
+            onSearchTermChange={setSearchTerm}
+          />
+        </div>
+      )}
+
       {/* Verified queue: table view of all confirmed cards. The
           side-by-side comparison is overkill here — once a card is
           marked verified there's nothing to decide, only to audit.
           So we render a single table with one row per card, showing
-          card identity, SNKRDUNK apparel_id, status badge, and the
+          card identity, yuyu-tei index, SNKRDUNK apparel_id, and the
           verified_at timestamp. */}
       {filter === 'verified' && filtered.length > 0 && !loading && (
         <div
           className="lp-card"
           style={{ padding: 0, marginBottom: '1rem', overflowX: 'auto' }}
         >
+          <VerifiedSearchBar
+            searchTerm={searchTerm}
+            onSearchTermChange={setSearchTerm}
+          />
           <table
             style={{
               width: '100%',
@@ -1238,8 +1423,8 @@ const gridTemplateColumns =
                 }}
               >
                 <th style={{ padding: '0.65rem 0.75rem' }}>Card</th>
+                <th style={{ padding: '0.65rem 0.75rem' }}>YUYUTEI</th>
                 <th style={{ padding: '0.65rem 0.75rem' }}>SNKRDUNK</th>
-                <th style={{ padding: '0.65rem 0.75rem' }}>Status</th>
                 <th style={{ padding: '0.65rem 0.75rem' }}>Verified at</th>
                 <th style={{ padding: '0.65rem 0.75rem', textAlign: 'right' }}>
                   Actions
@@ -1264,20 +1449,7 @@ const gridTemplateColumns =
                         minWidth: 0,
                       }}
                     >
-                      <img
-                        src={yuyuteiImageUrl(r)}
-                        alt={r.card_name || r.id}
-                        loading="lazy"
-                        referrerPolicy="no-referrer"
-                        style={{
-                          width: 40,
-                          height: 56,
-                          objectFit: 'contain',
-                          borderRadius: 4,
-                          background: '#fff',
-                          flex: '0 0 auto',
-                        }}
-                      />
+                      <VerifiedPreviewPair card={r} />
                       <div style={{ minWidth: 0 }}>
                         <div
                           style={{
@@ -1303,6 +1475,24 @@ const gridTemplateColumns =
                     </div>
                   </td>
                   <td style={{ padding: '0.55rem 0.75rem' }}>
+                    {r.url_yuyutei && yuyuteiProductIndex(r) ? (
+                      <a
+                        href={r.url_yuyutei}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{
+                          fontFamily: 'ui-monospace, monospace',
+                          color: 'var(--accent)',
+                          textDecoration: 'none',
+                        }}
+                      >
+                        {yuyuteiProductIndex(r)}
+                      </a>
+                    ) : (
+                      <span style={{ color: 'var(--text-secondary)' }}>—</span>
+                    )}
+                  </td>
+                  <td style={{ padding: '0.55rem 0.75rem' }}>
                     {r.snkrdunk_apparel_id ? (
                       <a
                         href={snkrdunkProductUrl(r.snkrdunk_apparel_id)}
@@ -1319,29 +1509,6 @@ const gridTemplateColumns =
                     ) : (
                       <span style={{ color: 'var(--text-secondary)' }}>—</span>
                     )}
-                  </td>
-                  <td style={{ padding: '0.55rem 0.75rem' }}>
-                    <span
-                      style={{
-                        display: 'inline-block',
-                        padding: '0.15rem 0.55rem',
-                        borderRadius: 999,
-                        background:
-                          r.verify_status === 'verified'
-                            ? 'color-mix(in srgb, var(--accent) 18%, transparent)'
-                            : 'color-mix(in srgb, #c0392b 18%, transparent)',
-                        color:
-                          r.verify_status === 'verified'
-                            ? 'var(--accent)'
-                            : '#c0392b',
-                        fontSize: '0.72rem',
-                        fontWeight: 600,
-                        letterSpacing: '0.03em',
-                        textTransform: 'uppercase',
-                      }}
-                    >
-                      {r.verify_status ?? 'unverified'}
-                    </span>
                   </td>
                   <td
                     style={{
@@ -1735,8 +1902,9 @@ const gridTemplateColumns =
                 {pendingDiscoveryCount === 1 ? '' : 's'}
               </strong>{' '}
               for the SNKRDUNK lookup worker. The worker searches SNKRDUNK for
-              the missing <code>apparel_id</code> values; matched cards will
-              appear in the Unverified tab once they finish.
+              the missing <code>apparel_id</code> values. Matches will appear
+              in Unverified once they finish; no-match cards will appear there
+              as unidentified for manual SNKRDUNK ID assignment.
             </p>
             <div
               style={{

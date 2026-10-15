@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS master_table (
   -- they confirm the mapping is correct against the live SNKRDUNK page.
   verified_at     TIMESTAMPTZ NULL,
   verify_status   TEXT NULL
-    CHECK (verify_status IS NULL OR verify_status IN ('verified', 'rejected')),
+    CHECK (verify_status IS NULL OR verify_status IN ('verified', 'rejected', 'unidentified')),
   created_at TIMESTAMPTZ DEFAULT now()
 );
 GRANT SELECT, INSERT, UPDATE, DELETE ON master_table TO authenticated;

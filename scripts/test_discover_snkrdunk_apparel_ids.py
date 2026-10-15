@@ -1,10 +1,29 @@
 import unittest
 from unittest.mock import AsyncMock, patch
 
-from discover_snkrdunk_apparel_ids import discover_one, score_title, search_keywords
+from discover_snkrdunk_apparel_ids import (
+    discover_one,
+    score_title,
+    search_keywords,
+    should_mark_unidentified,
+)
 
 
 class DiscoverSnkrdunkScoringTests(unittest.TestCase):
+    def test_low_confidence_apply_marks_card_unidentified(self):
+        self.assertTrue(should_mark_unidentified('914805', 20, 50, False))
+        self.assertFalse(should_mark_unidentified('742506', 70, 50, False))
+        self.assertFalse(should_mark_unidentified('914805', 20, 50, True))
+
+    def test_mc_cards_search_series_qualified_index_first(self):
+        card = {
+            'card_series': 'mc',
+            'card_index': '743/742',
+            'card_name': 'ピカチュウ',
+        }
+
+        self.assertEqual(search_keywords(card)[0], 'mc 743/742')
+
     def test_sp_cards_try_spc_search_before_plain_index(self):
         card = {
             'id': 'opcgop17op12056sp10167',

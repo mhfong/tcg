@@ -103,7 +103,7 @@ def fetch_unmapped(only_this: str = "") -> list[dict]:
         r = httpx.get(
             f"{SUPABASE_URL}/rest/v1/master_table",
             params={
-                "select": "id,tcg_type,card_series,card_index,card_name,card_rarity,url_yuyutei,snkrdunk_apparel_id",
+                "select": "id,tcg_type,card_series,card_index,card_name,card_rarity,url_yuyutei,snkrdunk_apparel_id,verify_status",
                 "id": f"eq.{only_this}",
                 "limit": 1,
             },
@@ -116,8 +116,9 @@ def fetch_unmapped(only_this: str = "") -> list[dict]:
         r = httpx.get(
             f"{SUPABASE_URL}/rest/v1/master_table",
             params={
-                "select": "id,tcg_type,card_series,card_index,card_name,card_rarity,url_yuyutei,snkrdunk_apparel_id",
+                "select": "id,tcg_type,card_series,card_index,card_name,card_rarity,url_yuyutei,snkrdunk_apparel_id,verify_status",
                 "snkrdunk_apparel_id": "is.null",
+                "verify_status": "is.null",
                 "limit": 1000,
                 "offset": offset,
             },
@@ -139,7 +140,18 @@ def patch_apparel_id(master_id: str, apparel_id: str) -> None:
     r = httpx.patch(
         f"{SUPABASE_URL}/rest/v1/master_table",
         params={"id": f"eq.{master_id}"},
-        json={"snkrdunk_apparel_id": apparel_id},
+        json={"snkrdunk_apparel_id": apparel_id, "verify_status": None},
+        headers=H_JSON,
+        timeout=30,
+    )
+    r.raise_for_status()
+
+
+def patch_verify_status(master_id: str, status: str) -> None:
+    r = httpx.patch(
+        f"{SUPABASE_URL}/rest/v1/master_table",
+        params={"id": f"eq.{master_id}"},
+        json={"verify_status": status},
         headers=H_JSON,
         timeout=30,
     )
@@ -202,8 +214,11 @@ def search_keywords(card: dict) -> list[str]:
     idx = (card.get("card_index") or "").strip()
     name = strip_index_suffix(card.get("card_name") or "")
     rarity = (card.get("card_rarity") or "").upper()
+    series = (card.get("card_series") or "").strip().lower()
     keywords = []
     if idx:
+        if series == "mc":
+            keywords.append(f"mc {idx}")
         if rarity == "SP":
             keywords.append(f"{idx} SPC")
         keywords.append(idx)
@@ -514,6 +529,14 @@ def write_review_csv(results: list[dict]) -> Path:
 
 # ─── Main ─────────────────────────────────────────────────────────────────
 
+def should_mark_unidentified(
+    apparel_id: Optional[str],
+    score: int,
+    min_confidence: int,
+    dry_run: bool,
+) -> bool:
+    return not dry_run and not (apparel_id and score >= min_confidence)
+
 async def run(args) -> int:
     cards = fetch_unmapped(args.only_this)
     if args.limit:
@@ -557,6 +580,12 @@ async def run(args) -> int:
                     print(f"  \u2713 PATCHed master_table", file=sys.stderr)
                 except Exception as e:
                     print(f"  ! PATCH failed: {e}", file=sys.stderr)
+            elif should_mark_unidentified(aid, score, min_conf, args.dry_run):
+                try:
+                    patch_verify_status(card["id"], "unidentified")
+                    print("  \u2713 marked master_table unidentified", file=sys.stderr)
+                except Exception as e:
+                    print(f"  ! status PATCH failed: {e}", file=sys.stderr)
             results.append(res)
             await asyncio.sleep(0.8)  # be polite
 
@@ -582,7 +611,8 @@ def cli() -> int:
                     help="Only process this one master_id")
     ap.add_argument("--apply", action="store_true",
                     help="PATCH master_table for each match above the "
-                         "min-confidence threshold")
+                        "min-confidence threshold; mark skipped cards "
+                        "unidentified")
     ap.add_argument("--dry-run", action="store_true",
                     help="Don't PATCH; just write the review CSV")
     args = ap.parse_args()

@@ -5,8 +5,8 @@
  *   PTCG: 'ptcg' + series + digits(card_number) + lowercase(rarity) + yuyutei_slug
  *   OPCG (non-GOLD-DON): 'opcg' + series + indexSlug(card_index) + raritySlug + slug
  *   OPCG GOLD-DON: 'opcg' + series + 'golddon' + yuyutei_slug
- *     (uses card_series instead of card_index because GOLD-DON cards share
- *      the synthetic card_index "GOLD-DON" across all sets)
+ *     (uses card_series instead of card_index because GOLD-DON cards have no
+ *      card_index and are identified by their series and product slug)
  *
  * Examples:
  *   PTCG: series=s12a, card_number="259/172", rarity="UR", slug="10348"
@@ -25,7 +25,7 @@
 const DIGITS_ONLY = /\D/g
 const NON_LETTERS = /[^a-z]/g
 
-function digitsOnly(s: string): string {
+function digitsOnly(s: string | null): string {
   return (s ?? '').replace(DIGITS_ONLY, '')
 }
 
@@ -41,7 +41,7 @@ function lettersOnlyLower(s: string): string {
  *   "OP01-120" -> "op01120"
  *   "DON!!"    -> "don"
  */
-function opcgIndexSlug(s: string): string {
+function opcgIndexSlug(s: string | null): string {
   return (s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '')
 }
 
@@ -59,7 +59,7 @@ function yuyuteiSlugFromUrl(url: string): string {
 export interface CardIdInputs {
   tcg_type: 'PTCG' | 'OPCG'
   card_series: string
-  card_index: string
+  card_index: string | null
   card_rarity: string
   url_yuyutei: string
 }

@@ -191,6 +191,13 @@ def strip_index_suffix(name: str) -> str:
     return re.sub(r"\s*\[[A-Z]{2,4}[-‐−]?\d+\]\s*", " ", name or "").strip()
 
 
+def gold_don_series_keyword(card: dict) -> str:
+    series = (card.get("card_series") or "").strip()
+    if (card.get("card_rarity") or "").upper() != "GOLD-DON" or not series:
+        return ""
+    return f"ドン!!カード スーパーパラレル {series}"
+
+
 def search_keywords(card: dict) -> list[str]:
     idx = (card.get("card_index") or "").strip()
     name = strip_index_suffix(card.get("card_name") or "")
@@ -210,6 +217,9 @@ def search_keywords(card: dict) -> list[str]:
                 keywords.append(fragment)
     if name:
         keywords.append(f"{name} {idx}".strip())
+    fallback = gold_don_series_keyword(card)
+    if fallback:
+        keywords.append(fallback)
     return keywords
 
 
@@ -435,7 +445,11 @@ async def discover_one(page, card: dict) -> dict:
     candidates: list[dict] = []
     used_kw = ""
     scored: list[dict] = []
-    for kw in keywords[:3]:
+    keywords_to_try = keywords[:3]
+    fallback = gold_don_series_keyword(card)
+    if fallback and fallback not in keywords_to_try:
+        keywords_to_try.append(fallback)
+    for kw in keywords_to_try:
         if not kw.strip():
             continue
         try:

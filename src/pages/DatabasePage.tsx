@@ -6,6 +6,7 @@ import { PTCG_SERIES, OPCG_SERIES, PTCG_RARITIES, OPCG_RARITIES } from '../lib/t
 import { makeCardId } from '../lib/cardId'
 import { compareCardsByColumn } from '../lib/cardSorting'
 import type { SortState } from '../lib/cardSorting'
+import { trimWhiteBorders } from '../lib/trimWhiteBorders'
 import { getSingleCardNameOverride } from '../lib/yuyuteiCardNames'
 
 type TcgType = 'PTCG' | 'OPCG'
@@ -113,6 +114,8 @@ function DatabasePreview({ card }: { card: DatabaseCard }) {
     !card.snkrdunk_apparel_id,
   )
   const [snkrdunkImage, setSnkrdunkImage] = useState('')
+  const [croppedImage, setCroppedImage] = useState<string | null>(null)
+  const [cropping, setCropping] = useState(false)
   const fallbackImage = yuyuteiImageUrl(card)
 
   useEffect(() => {
@@ -147,14 +150,20 @@ function DatabasePreview({ card }: { card: DatabaseCard }) {
     }
   }, [card.snkrdunk_apparel_id, shouldLoadSnkrdunk])
 
-  const imageUrl = snkrdunkImage
+  const sourceImage = snkrdunkImage
     ? snkrdunkProxiedImageUrl(snkrdunkImage)
     : fallbackImage
+  const imageUrl = croppedImage ?? sourceImage
+
+  useEffect(() => {
+    setCroppedImage(null)
+    setCropping(false)
+  }, [sourceImage])
 
   return (
     <div
       ref={previewRef}
-      style={{ width: 40, minHeight: 56, display: 'flex', alignItems: 'center' }}
+      style={{ width: 64, minHeight: 90, display: 'flex', alignItems: 'center' }}
     >
       {imageUrl ? (
         <img
@@ -162,13 +171,23 @@ function DatabasePreview({ card }: { card: DatabaseCard }) {
           alt={card.card_name || card.id}
           loading="lazy"
           referrerPolicy="no-referrer"
+          {...(snkrdunkImage ? { crossOrigin: 'anonymous' as const } : {})}
           style={{
-            width: 40,
-            height: 56,
+            width: 64,
+            height: 90,
             objectFit: 'contain',
             borderRadius: 4,
-            background: '#fff',
+            background: 'transparent',
             display: 'block',
+          }}
+          onLoad={event => {
+            if (!snkrdunkImage || croppedImage || cropping) return
+            setCropping(true)
+            void trimWhiteBorders(event.currentTarget)
+              .then(cropped => {
+                if (cropped) setCroppedImage(cropped)
+              })
+              .finally(() => setCropping(false))
           }}
           onError={event => {
             const image = event.currentTarget
@@ -854,7 +873,7 @@ export default function DatabasePage() {
       if (!q) return true
       return (
         c.card_series.toLowerCase().includes(q) ||
-        c.card_index.toLowerCase().includes(q) ||
+        (c.card_index ?? '').toLowerCase().includes(q) ||
         c.card_name.toLowerCase().includes(q) ||
         c.card_rarity.toLowerCase().includes(q)
       )

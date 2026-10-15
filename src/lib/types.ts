@@ -2,7 +2,7 @@ export interface CardDefinition {
   id: string
   tcg_type: 'PTCG' | 'OPCG'
   card_series: string
-  card_index: string
+  card_index: string | null
   card_name: string
   card_rarity: string
   url_yuyutei?: string | null

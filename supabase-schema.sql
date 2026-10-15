@@ -13,9 +13,11 @@ CREATE TABLE IF NOT EXISTS master_table (
   id TEXT PRIMARY KEY,
   tcg_type TEXT NOT NULL CHECK (tcg_type IN ('PTCG', 'OPCG')),
   card_series TEXT NOT NULL,
-  card_index TEXT NOT NULL,
+  card_index TEXT,
   card_name TEXT NOT NULL DEFAULT '',
   card_rarity TEXT NOT NULL,
+  CONSTRAINT master_table_gold_don_card_index_null
+    CHECK (card_rarity <> 'GOLD-DON' OR card_index IS NULL),
   url_yuyutei TEXT,
   -- SNKRDUNK apparel id (e.g. '515454'). Discovered lazily by the daily scraper
   -- and cached here so the next run skips the discovery step.

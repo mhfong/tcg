@@ -82,11 +82,55 @@ class DiscoverSnkrdunkScoringTests(unittest.TestCase):
     def test_gold_don_search_uses_specific_name_fragment(self):
         card = {
             'card_index': 'OP10-108',
+            'card_series': 'op10',
             'card_name': 'ドン!!カード(シュガー)(パラレル)(スーパーパラレル)',
             'card_rarity': 'GOLD-DON',
         }
 
         self.assertEqual(search_keywords(card)[2], 'シュガー')
+
+    def test_gold_don_search_adds_series_qualified_fallback(self):
+        card = {
+            'card_index': 'OP06-058',
+            'card_series': 'op06',
+            'card_name': 'ドン!!カード(モンキー・D・ドラゴン)(パラレル)(スーパーパラレル)',
+            'card_rarity': 'GOLD-DON',
+        }
+
+        self.assertEqual(
+            search_keywords(card)[-1],
+            'ドン!!カード スーパーパラレル op06',
+        )
+
+    def test_gold_don_search_reaches_series_fallback_after_no_match(self):
+        card = {
+            'id': 'opcgprb02golddon10256',
+            'card_index': 'OP06-058',
+            'card_series': 'op06',
+            'card_name': 'ドン!!カード(モンキー・D・ドラゴン)(パラレル)(スーパーパラレル)',
+            'card_rarity': 'GOLD-DON',
+        }
+
+        async def run_discovery():
+            with patch(
+                'discover_snkrdunk_apparel_ids.search_snkrdunk',
+                new=AsyncMock(side_effect=[
+                    [],
+                    [],
+                    [],
+                    [{'apparel_id': 'gold-don-match', 'name': 'ドン!!カード'}],
+                ]),
+            ) as search, patch(
+                'discover_snkrdunk_apparel_ids.score_candidate',
+                new=AsyncMock(return_value=100),
+            ):
+                result = await discover_one(None, card)
+                return result, search.await_args_list
+
+        result, calls = __import__('asyncio').run(run_discovery())
+
+        self.assertEqual(result['apparel_id'], 'gold-don-match')
+        self.assertEqual(calls[-1].args[1], 'ドン!!カード スーパーパラレル op06')
 
     def test_yuyutei_super_parallel_names_require_komipara_titles(self):
         card = {

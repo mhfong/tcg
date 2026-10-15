@@ -416,10 +416,9 @@ def _fetch_gold_don_cards(tcg_code: str, series: str, html: str) -> list[dict]:
         card_name = gold_alt[3:].strip()
         cards.append(
             {
-                # Yuyu-tei uses a literal "-" for both the card number and
-                # rarity on the ドン!! gold cards. Keep that "-" as the
-                # card_index so the displayed value matches the source.
-                "card_index": "-",
+                # GOLD-DON cards are identified by series and product slug,
+                # so they intentionally have no card index.
+                "card_index": None,
                 "card_name": card_name,
                 "url_yuyutei": f"{base_url}/{slug}",
             }

@@ -31,7 +31,7 @@ export function compareCardsByColumn(
     return seriesDirection === 'asc' ? seriesOrder : -seriesOrder
   }
 
-  const cardIndexOrder = cardSortCollator.compare(a.card_index, b.card_index)
+  const cardIndexOrder = cardSortCollator.compare(a.card_index ?? '', b.card_index ?? '')
   if (cardIndexDirection && cardIndexOrder !== 0) {
     return cardIndexDirection === 'asc' ? cardIndexOrder : -cardIndexOrder
   }

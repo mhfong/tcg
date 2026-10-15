@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
+import { trimWhiteBorders } from '../lib/trimWhiteBorders'
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -8,7 +9,7 @@ interface CardRow {
   id: string
   tcg_type: 'PTCG' | 'OPCG'
   card_series: string
-  card_index: string
+  card_index: string | null
   card_name: string
   card_rarity: string
   url_yuyutei: string | null
@@ -24,6 +25,9 @@ interface SnkrdunkMetadata {
   brand: string        // "ONE PIECE" / "ポケモンカード"
   fetched: boolean
 }
+
+const VERIFIED_PAGE_SIZE = 100
+const VALIDATION_FETCH_PAGE_SIZE = 1000
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
@@ -102,126 +106,6 @@ function markSnkrdunkProxyFailed(rawUrl: string) {
   } catch {
     // Ignore -- nothing useful to do.
   }
-}
-
-/**
- * Crop whitespace and transparency from all four sides of an
- * HTMLImageElement. Returns a cropped PNG data URL, or null if no
- * border was found / the image was unprocessable.
- *
- * "Whitespace" is treated broadly:
- *   - Pure-white pixels (RGB ≈ 255,255,255) are considered padding.
- *     This catches images that were saved with a solid white
- *     background instead of a transparent one.
- *   - Fully-transparent pixels (alpha = 0) are also considered
- *     padding. This catches the `upload_bg_removed` SNKRDUNK
- *     product scans which ship with transparent backgrounds.
- *
- * For each edge, we walk inward until we hit a pixel that is
- * NEITHER near-white NOR fully transparent. The returned canvas
- * is the tight bounding box of "opaque, non-white" content.
- *
- * SNKRDUNK's product scans ship with sizable transparent/white
- * borders which makes them look small compared to the yuyu-tei
- * scan in the validation page's side-by-side comparison. Trimming
- * the border lets the parent grid column (proportional to the
- * cropped image's natural aspect ratio) display the card
- * edge-to-edge.
- *
- * Performance: a typical ~600×600 image has ~2,400 pixels per edge
- * to scan; the function returns in well under 100ms on commodity
- * hardware. The result is memoized by the caller so this only
- * runs once per URL.
- */
-async function trimWhiteBorders(
-  img: HTMLImageElement,
-  tolerance = 6,
-): Promise<string | null> {
-  const w = img.naturalWidth
-  const h = img.naturalHeight
-  if (!w || !h) return null
-
-  const canvas = document.createElement('canvas')
-  canvas.width = w
-  canvas.height = h
-  const ctx = canvas.getContext('2d', { willReadFrequently: true })
-  if (!ctx) return null
-  ctx.drawImage(img, 0, 0, w, h)
-
-  let imageData: ImageData
-  try {
-    imageData = ctx.getImageData(0, 0, w, h)
-  } catch {
-    // CORS-tainted canvas; cannot read pixels. Skip the crop.
-    return null
-  }
-  const data = imageData.data
-
-  // A pixel is "content" if it is NEITHER near-white NOR fully
-  // transparent. tolerance=6 means RGB sum must be ≤ (255+255+255)
-  // - 3*6 = 747 to count as not-white. For the alpha check, a
-  // pixel with alpha < 10 is treated as fully transparent.
-  const RGB_THRESHOLD = 255 * 3 - tolerance * 3
-  const ALPHA_THRESHOLD = 10
-  const isContent = (i: number) =>
-    data[i + 3] >= ALPHA_THRESHOLD &&
-    data[i] + data[i + 1] + data[i + 2] < RGB_THRESHOLD
-
-  let top = 0
-  outerTop: for (; top < h; top++) {
-    for (let x = 0; x < w; x++) {
-      if (isContent((top * w + x) * 4)) break outerTop
-    }
-  }
-  let bottom = h - 1
-  outerBottom: for (; bottom > top; bottom--) {
-    for (let x = 0; x < w; x++) {
-      if (isContent((bottom * w + x) * 4)) break outerBottom
-    }
-  }
-  let left = 0
-  outerLeft: for (; left < w; left++) {
-    for (let y = top; y <= bottom; y++) {
-      if (isContent((y * w + left) * 4)) break outerLeft
-    }
-  }
-  let right = w - 1
-  outerRight: for (; right > left; right--) {
-    for (let y = top; y <= bottom; y++) {
-      if (isContent((y * w + right) * 4)) break outerRight
-    }
-  }
-
-  // No cropping needed (image already tight, or fully empty —
-  // caller checks and ignores).
-  const noCrop =
-    top === 0 && left === 0 && bottom === h - 1 && right === w - 1
-
-  let cropW: number
-  let cropH: number
-  let srcX: number
-  let srcY: number
-  if (noCrop) {
-    cropW = w
-    cropH = h
-    srcX = 0
-    srcY = 0
-  } else {
-    cropW = right - left + 1
-    cropH = bottom - top + 1
-    srcX = left
-    srcY = top
-    if (cropW <= 0 || cropH <= 0) return null
-  }
-
-  const out = document.createElement('canvas')
-  out.width = cropW
-  out.height = cropH
-  const octx = out.getContext('2d')
-  if (!octx) return null
-  octx.imageSmoothingQuality = 'high'
-  octx.drawImage(canvas, srcX, srcY, cropW, cropH, 0, 0, cropW, cropH)
-  return out.toDataURL('image/png')
 }
 
 /** Fetch the SNKRDUNK og:image + og:title for an apparel_id.
@@ -381,6 +265,7 @@ export default function DatabaseValidationPage() {
   // initial-load auto-pick). Once true, we never overwrite the user's
   // selection on subsequent re-fetches.
   const [filterChosen, setFilterChosen] = useState(false)
+  const [verifiedPage, setVerifiedPage] = useState(1)
 
   // Themed confirmation dialog for the "Discover now" button. We replaced
   // the native window.confirm with this in-page modal so the prompt
@@ -416,16 +301,32 @@ export default function DatabaseValidationPage() {
       //   3) exact discover_queue status counts — lets the banner show
       //      accurate progress even when the queue exceeds 1,000 rows.
       const queueStatuses = ['pending', 'processing', 'done', 'failed'] as const
+      const loadCardsWithApparel = async () => {
+        const loadedCards: CardRow[] = []
+        let offset = 0
+
+        while (true) {
+          const { data, error: pageError } = await supabase
+            .from('master_table')
+            .select(
+              'id,tcg_type,card_series,card_index,card_name,card_rarity,url_yuyutei,snkrdunk_apparel_id,verified_at,verify_status',
+            )
+            .not('snkrdunk_apparel_id', 'is', null)
+            .order('verify_status', { ascending: true, nullsFirst: true })
+            .order('created_at', { ascending: true })
+            .range(offset, offset + VALIDATION_FETCH_PAGE_SIZE - 1)
+          if (pageError) return { data: null, error: pageError }
+
+          const page = (data ?? []) as CardRow[]
+          loadedCards.push(...page)
+          if (page.length < VALIDATION_FETCH_PAGE_SIZE) break
+          offset += VALIDATION_FETCH_PAGE_SIZE
+        }
+
+        return { data: loadedCards, error: null }
+      }
       const [withId, withoutId, queueCounts] = await Promise.all([
-        supabase
-          .from('master_table')
-          .select(
-            'id,tcg_type,card_series,card_index,card_name,card_rarity,url_yuyutei,snkrdunk_apparel_id,verified_at,verify_status',
-          )
-          .not('snkrdunk_apparel_id', 'is', null)
-          .order('verify_status', { ascending: true, nullsFirst: true })
-          .order('created_at', { ascending: true })
-          .limit(500),
+        loadCardsWithApparel(),
         // Fetch a small sample for the count query. The exact count is
         // returned separately so large databases are not truncated at
         // Supabase's response limit.
@@ -599,6 +500,21 @@ export default function DatabaseValidationPage() {
         )
       })
   }, [rows, filter, searchTerm])
+
+  const verifiedPageCount = Math.max(
+    1,
+    Math.ceil(filtered.length / VERIFIED_PAGE_SIZE),
+  )
+  const currentVerifiedPage = Math.min(verifiedPage, verifiedPageCount)
+  const verifiedPageStart = (currentVerifiedPage - 1) * VERIFIED_PAGE_SIZE
+  const visibleVerifiedCards = filtered.slice(
+    verifiedPageStart,
+    verifiedPageStart + VERIFIED_PAGE_SIZE,
+  )
+
+  useEffect(() => {
+    setVerifiedPage(1)
+  }, [filter, searchTerm])
 
   // After the filter or rows change (e.g. user marked a card verified
   // so it dropped out of the "Unverified" filter), clamp the cursor to
@@ -1331,7 +1247,7 @@ const gridTemplateColumns =
               </tr>
             </thead>
             <tbody>
-              {filtered.map(({ r }) => (
+              {visibleVerifiedCards.map(({ r }) => (
                 <tr
                   key={r.id}
                   style={{
@@ -1462,6 +1378,51 @@ const gridTemplateColumns =
               ))}
             </tbody>
           </table>
+          <div
+            className="table-foot"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '0.75rem',
+              flexWrap: 'wrap',
+            }}
+          >
+            <span>
+              Showing {verifiedPageStart + 1}-{Math.min(
+                verifiedPageStart + VERIFIED_PAGE_SIZE,
+                filtered.length,
+              )}{' '}
+              of {filtered.length} verified cards
+            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => setVerifiedPage(currentVerifiedPage - 1)}
+                disabled={currentVerifiedPage === 1}
+                aria-label="Previous verified page"
+                title="Previous verified page"
+                style={{ padding: '0.35rem 0.6rem' }}
+              >
+                ←
+              </button>
+              <span aria-label={`Verified page ${currentVerifiedPage} of ${verifiedPageCount}`}>
+                Page {currentVerifiedPage} of {verifiedPageCount}
+              </span>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => setVerifiedPage(currentVerifiedPage + 1)}
+                disabled={currentVerifiedPage === verifiedPageCount}
+                aria-label="Next verified page"
+                title="Next verified page"
+                style={{ padding: '0.35rem 0.6rem' }}
+              >
+                →
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1569,7 +1530,7 @@ const gridTemplateColumns =
               metaLines={[
                 ['TCG', currentCard.tcg_type],
                 ['Series', currentCard.card_series],
-                ['Index', currentCard.card_index],
+                ['Index', currentCard.card_index ?? ''],
                 ['Rarity', currentCard.card_rarity],
                 ['Name', currentCard.card_name || '—'],
               ]}

@@ -101,7 +101,7 @@ export default function WatchlistPage() {
       if (searchTerm) {
         const term = searchTerm.toLowerCase()
         return c.card_name.toLowerCase().includes(term) ||
-          c.card_index.toLowerCase().includes(term) ||
+          (c.card_index ?? '').toLowerCase().includes(term) ||
           c.card_series.toLowerCase().includes(term)
       }
       return true

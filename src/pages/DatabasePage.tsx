@@ -66,6 +66,10 @@ function yuyuteiImageUrl(card: DatabaseCard): string {
   return `https://card.yuyu-tei.jp/${tcgPath}/front/${series}/${slug}.jpg`
 }
 
+function snkrdunkProductUrl(apparelId: string): string {
+  return `https://snkrdunk.com/apparels/${apparelId}`
+}
+
 function snkrdunkProxiedImageUrl(rawUrl: string): string {
   const baseUrl =
     (
@@ -1439,7 +1443,7 @@ export default function DatabasePage() {
                   </button>
                 </th>
                 <th>Name</th>
-                <th>Yuyutei</th>
+                <th>SNKRDUNK</th>
               </tr>
             </thead>
             <tbody>
@@ -1458,9 +1462,9 @@ export default function DatabasePage() {
                   <td>{c.card_rarity}</td>
                   <td>{c.card_name || '—'}</td>
                   <td>
-                    {c.url_yuyutei ? (
+                    {c.snkrdunk_apparel_id ? (
                       <a
-                        href={c.url_yuyutei}
+                        href={snkrdunkProductUrl(c.snkrdunk_apparel_id)}
                         target="_blank"
                         rel="noreferrer"
                         className="link"

@@ -6,6 +6,7 @@ import { PTCG_SERIES, OPCG_SERIES, PTCG_RARITIES, OPCG_RARITIES } from '../lib/t
 import { makeCardId } from '../lib/cardId'
 import { compareCardsByColumn } from '../lib/cardSorting'
 import type { SortState } from '../lib/cardSorting'
+import { matchesDatabaseCardSearch } from '../lib/cardSearch'
 import { trimWhiteBorders } from '../lib/trimWhiteBorders'
 import { getSingleCardNameOverride } from '../lib/yuyuteiCardNames'
 
@@ -871,16 +872,9 @@ export default function DatabasePage() {
     : PTCG_SERIES
 
   const filtered = useMemo(() => {
-    const q = searchTerm.trim().toLowerCase()
     const matchingCards = cards.filter(c => {
       if (filterTcg !== 'all' && c.tcg_type !== filterTcg) return false
-      if (!q) return true
-      return (
-        c.card_series.toLowerCase().includes(q) ||
-        (c.card_index ?? '').toLowerCase().includes(q) ||
-        c.card_name.toLowerCase().includes(q) ||
-        c.card_rarity.toLowerCase().includes(q)
-      )
+      return matchesDatabaseCardSearch(c, searchTerm)
     })
     return matchingCards.sort((a, b) => {
       return compareCardsByColumn(
@@ -1330,7 +1324,7 @@ export default function DatabasePage() {
       <div className="toolbar">
         <input
           className="input toolbar__search"
-          placeholder="Search by series, number, name, or rarity…"
+          placeholder="Search series, card #, name, rarity… (spaces = AND)"
           value={searchTerm}
           onChange={e => {
             setSearchTerm(e.target.value)
